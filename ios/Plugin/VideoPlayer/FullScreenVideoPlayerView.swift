@@ -202,12 +202,6 @@ open class FullScreenVideoPlayerView: UIView {
     private func addSubtitlesToPlayer(subTitleUrl: URL) {
         print("Setting up custom subtitle display...")
         
-        // Check if subtitle file exists and is accessible
-        guard FileManager.default.fileExists(atPath: subTitleUrl.path) else {
-            print("Subtitle file not found at: \(subTitleUrl.path)")
-            return
-        }
-        
         // Read and parse subtitle content
         do {
             let subtitleContent = try String(contentsOf: subTitleUrl, encoding: .utf8)
