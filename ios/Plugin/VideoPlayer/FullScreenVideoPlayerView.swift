@@ -49,15 +49,36 @@ open class FullScreenVideoPlayerView: UIView {
     var periodicTimeObserver: Any?
     var subtitleTimeObserver: Any?
 
+    private var _subtitleTracks: [[String: Any]]?
+    private var _selectedSubtitleId: String?
+    private var _activeSubtitleTrackId: String?
+    private var subtitleTracksData: [String: [(start: Double, end: Double, text: String)]] = [:]
+    private var subtitleLabel: UILabel?
+
     init(url: URL, rate: Float, playerId: String, exitOnEnd: Bool,
          loopOnEnd: Bool, pipEnabled: Bool, showControls: Bool,
          displayMode: String, stUrl: URL?, stLanguage: String?,
          stHeaders: [String: String]?, stOptions: [String: Any]?,
-         title: String?, smallTitle: String?, artwork: String?) {
+         title: String?, smallTitle: String?, artwork: String?,
+         subtitleTracks: [[String: Any]]?,
+         selectedSubtitleId: String?) {
         //self._videoPath = videoPath
         self._url = url
-        self._stUrl = stUrl
-        self._stLanguage = stLanguage
+        // Handle multiple subtitle tracks or backward compatibility
+        if let tracks = subtitleTracks, !tracks.isEmpty {
+            self._subtitleTracks = tracks
+            self._selectedSubtitleId = selectedSubtitleId
+            // Set first track URL for backward compatibility
+            if let firstTrack = tracks[0]["url"] as? String {
+                self._stUrl = URL(string: firstTrack)
+            }
+            if let firstLanguage = tracks[0]["language"] as? String {
+                self._stLanguage = firstLanguage
+            }
+        } else {
+            self._stUrl = stUrl
+            self._stLanguage = stLanguage
+        }
         self._stOptions = stOptions
         self._exitOnEnd = exitOnEnd
         self._loopOnEnd = loopOnEnd
@@ -93,8 +114,27 @@ open class FullScreenVideoPlayerView: UIView {
     // swiftlint:disable function_body_length
     // swiftlint:disable cyclomatic_complexity
   private func initialize() {
-      // Set SubTitles if any
-      if var subTitleUrl = self._stUrl {
+      // Handle multiple subtitle tracks or single subtitle
+      if let tracks = _subtitleTracks, !tracks.isEmpty {
+          // New API: multiple subtitle tracks
+          let isHLSStream = self.isHLSStream(url: self._url)
+          if isHLSStream {
+              // For HLS, load all tracks and set up player
+              self.loadAllSubtitleTracksForHLS()
+          } else {
+              // For non-HLS, use first track for backward compatibility
+              if let firstTrackUrl = tracks[0]["url"] as? String,
+                 let url = URL(string: firstTrackUrl) {
+                  self.loadVideoAssetWithSubtitles(subTitleUrl: url)
+              } else {
+                  // No valid subtitle URL, use simple player
+                  self.playerItem = AVPlayerItem(asset: self.videoAsset)
+                  self.player = AVPlayer(playerItem: self.playerItem)
+                  self.setupPlayer()
+              }
+          }
+      } else if let subTitleUrl = self._stUrl {
+          // Backward compatibility: single subtitle
           // For HLS streams, we need to load the asset asynchronously
           print("Loading HLS stream: \(self._url)")
           
@@ -170,9 +210,94 @@ open class FullScreenVideoPlayerView: UIView {
                 }
                 
                 // Now proceed with subtitle composition
-                self.createPlayerWithSubtitles(subTitleUrl: subTitleUrl, videoTracks: videoTracks)
+                // For multiple tracks, use first track for backward compatibility
+                // Multiple track switching will use AVMediaSelectionGroup
+                if let tracks = self._subtitleTracks, !tracks.isEmpty,
+                   let firstTrackUrl = tracks[0]["url"] as? String,
+                   let url = URL(string: firstTrackUrl) {
+                    self.createPlayerWithSubtitles(subTitleUrl: url, videoTracks: videoTracks)
+                } else {
+                    self.createPlayerWithSubtitles(subTitleUrl: subTitleUrl, videoTracks: videoTracks)
+                }
                 }
             }
+        }
+    }
+    
+    private func loadAllSubtitleTracksForHLS() {
+        guard let tracks = _subtitleTracks, !tracks.isEmpty else { return }
+        
+        // Create player item with the original HLS asset
+        self.playerItem = AVPlayerItem(asset: self.videoAsset)
+        self.player = AVPlayer(playerItem: self.playerItem)
+        
+        // CRITICAL: Assign player to videoPlayer BEFORE setting up subtitles
+        self.videoPlayer.player = self.player
+        
+        // Set up the player first
+        self.setupPlayer()
+        
+        // Load all subtitle tracks asynchronously
+        var loadedCount = 0
+        let totalTracks = tracks.count
+        
+        for track in tracks {
+            guard let trackUrlString = track["url"] as? String,
+                  let trackUrl = URL(string: trackUrlString),
+                  let trackId = track["id"] as? String else {
+                loadedCount += 1
+                if loadedCount >= totalTracks {
+                    self.finishHLSSubtitleSetup()
+                }
+                continue
+            }
+            
+            // Load subtitle file
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                do {
+                    let subtitleContent = try String(contentsOf: trackUrl, encoding: .utf8)
+                    let isVTT = subtitleContent.hasPrefix("WEBVTT")
+                    let subtitles: [(start: Double, end: Double, text: String)]
+                    if isVTT {
+                        subtitles = self.parseVTTContent(subtitleContent)
+                    } else {
+                        subtitles = self.parseSRTContent(subtitleContent)
+                    }
+                    
+                    DispatchQueue.main.async {
+                        self.subtitleTracksData[trackId] = subtitles
+                        loadedCount += 1
+                        if loadedCount >= totalTracks {
+                            self.finishHLSSubtitleSetup()
+                        }
+                    }
+                } catch {
+                    print("Failed to load subtitle track \(trackId): \(error)")
+                    DispatchQueue.main.async {
+                        loadedCount += 1
+                        if loadedCount >= totalTracks {
+                            self.finishHLSSubtitleSetup()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func finishHLSSubtitleSetup() {
+        // Set initial active track
+        if let selectedId = _selectedSubtitleId ?? _subtitleTracks?.first?["id"] as? String {
+            _activeSubtitleTrackId = selectedId
+        }
+        
+        // Wait for player to be ready before adding subtitles
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            self.setupHLSSubtitleDisplay()
+            
+            // Auto-play for HLS streams with subtitles
+            self.autoPlayIfHLSReady()
         }
     }
     
@@ -218,30 +343,48 @@ open class FullScreenVideoPlayerView: UIView {
             
             print("Parsed \(subtitles.count) subtitle entries")
             
+            // Store in tracks data for backward compatibility
+            subtitleTracksData["default"] = subtitles
+            
             // Create subtitle label that shows/hides based on timing
-            let subtitleLabel = UILabel()
-            subtitleLabel.textColor = UIColor.white
-            subtitleLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-            subtitleLabel.textAlignment = .center
-            subtitleLabel.font = UIFont.systemFont(ofSize: 16)
-            subtitleLabel.numberOfLines = 0
-            subtitleLabel.isHidden = true  // Start hidden
-            subtitleLabel.alpha = 0.0       // Start transparent
+            let label = UILabel()
+            label.textColor = UIColor.white
+            label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+            label.textAlignment = .center
+            label.font = UIFont.systemFont(ofSize: 16)
+            label.numberOfLines = 0
+            label.isHidden = true  // Start hidden
+            label.alpha = 0.0       // Start transparent
+            
+            // Apply styling from options if available
+            if let options = _stOptions {
+                if let fontSize = options["fontSize"] as? CGFloat {
+                    label.font = UIFont.systemFont(ofSize: fontSize)
+                }
+                if let fgColor = options["foregroundColor"] as? String {
+                    label.textColor = parseRGBA(fgColor) ?? UIColor.white
+                }
+                if let bgColor = options["backgroundColor"] as? String {
+                    label.backgroundColor = parseRGBA(bgColor)?.withAlphaComponent(0.7) ?? UIColor.black.withAlphaComponent(0.7)
+                }
+            }
+            
+            self.subtitleLabel = label
             
             // Add to the video player's content overlay view with delay to ensure proper layout
             if let contentOverlayView = self.videoPlayer.contentOverlayView {
-                contentOverlayView.addSubview(subtitleLabel)
-                subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+                contentOverlayView.addSubview(label)
+                label.translatesAutoresizingMaskIntoConstraints = false
                 
                 // Wait for the view to have proper dimensions before setting constraints
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     // Use more flexible constraints to avoid conflicts
                     NSLayoutConstraint.activate([
-                        subtitleLabel.centerXAnchor.constraint(equalTo: contentOverlayView.centerXAnchor),
-                        subtitleLabel.bottomAnchor.constraint(equalTo: contentOverlayView.bottomAnchor, constant: -50),
-                        subtitleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: contentOverlayView.leadingAnchor, constant: 20),
-                        subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentOverlayView.trailingAnchor, constant: -20),
-                        subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: contentOverlayView.widthAnchor, constant: -40)
+                        label.centerXAnchor.constraint(equalTo: contentOverlayView.centerXAnchor),
+                        label.bottomAnchor.constraint(equalTo: contentOverlayView.bottomAnchor, constant: -50),
+                        label.leadingAnchor.constraint(greaterThanOrEqualTo: contentOverlayView.leadingAnchor, constant: 20),
+                        label.trailingAnchor.constraint(lessThanOrEqualTo: contentOverlayView.trailingAnchor, constant: -20),
+                        label.widthAnchor.constraint(lessThanOrEqualTo: contentOverlayView.widthAnchor, constant: -40)
                     ])
                     print("Added subtitle label constraints after layout")
                 }
@@ -255,7 +398,7 @@ open class FullScreenVideoPlayerView: UIView {
             
             // Set up subtitle timing with player time observer (reduced frequency to prevent overload)
             let timeObserver = self.player?.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 1, timescale: 1), queue: .main) { [weak self] time in
-                guard let self = self else { return }
+                guard let self = self, let label = self.subtitleLabel else { return }
                 
                 let currentTime = time.seconds
                 let currentSubtitle = self.findSubtitleForTime(currentTime, subtitles: subtitles)
@@ -263,17 +406,17 @@ open class FullScreenVideoPlayerView: UIView {
                 // Only update if subtitle text has changed
                 let newText = currentSubtitle?.text ?? ""
                 if newText != currentDisplayedSubtitle {
-                    subtitleLabel.text = newText
+                    label.text = newText
                     currentDisplayedSubtitle = newText
                     
                     if !newText.isEmpty {
                         // Show subtitle instantly
-                        subtitleLabel.isHidden = false
-                        subtitleLabel.alpha = 1.0
+                        label.isHidden = false
+                        label.alpha = 1.0
                         print("Subtitle: \(newText)")
                     } else {
                         // Hide subtitle instantly
-                        subtitleLabel.isHidden = true
+                        label.isHidden = true
                         print("Subtitle cleared")
                     }
                 }
@@ -456,6 +599,13 @@ open class FullScreenVideoPlayerView: UIView {
                                                    of: audioTracks[0], at: CMTime.zero)
                 }
                 
+                // Handle multiple subtitle tracks if available
+                if let tracks = _subtitleTracks, tracks.count > 1 {
+                    // For multiple tracks, add the first one to composition
+                    // Track switching will be handled via AVMediaSelectionGroup or custom logic
+                    print("Multiple subtitle tracks detected, adding first track to composition")
+                }
+                
                 // Check if subtitle asset has text tracks
                 let subtitleTracks = subTitleAsset.tracks(withMediaType: .text)
                 if !subtitleTracks.isEmpty {
@@ -472,6 +622,12 @@ open class FullScreenVideoPlayerView: UIView {
 
                             self.playerItem = AVPlayerItem(asset: composition)
                             self.playerItem?.textStyleRules = textStyle
+                            
+                            // Set initial selected track
+                            if let selectedId = _selectedSubtitleId ?? _subtitleTracks?.first?["id"] as? String {
+                                _activeSubtitleTrackId = selectedId
+                            }
+                            
                             print("Successfully added subtitle track")
 
                         } catch {
@@ -530,8 +686,91 @@ open class FullScreenVideoPlayerView: UIView {
         if isPIPModeAvailable && self._pipEnabled {
             self.videoPlayer.allowsPictureInPicturePlayback = true
         }
+        
+        // Add subtitle selection button if multiple tracks are available
+        if let tracks = _subtitleTracks, tracks.count > 1 {
+            self.addSubtitleSelectionButton()
+        }
 
         self._isLoaded.updateValue(false, forKey: self._videoId)
+    }
+    
+    private func addSubtitleSelectionButton() {
+        // Create subtitle button
+        let subtitleButton = UIButton(type: .system)
+        subtitleButton.setTitle("CC", for: .normal)
+        subtitleButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        subtitleButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        subtitleButton.setTitleColor(.white, for: .normal)
+        subtitleButton.layer.cornerRadius = 8
+        subtitleButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        
+        subtitleButton.addTarget(self, action: #selector(showSubtitleSelectionMenu), for: .touchUpInside)
+        
+        // Add to content overlay view
+        if let contentOverlayView = self.videoPlayer.contentOverlayView {
+            contentOverlayView.addSubview(subtitleButton)
+            subtitleButton.translatesAutoresizingMaskIntoConstraints = false
+            
+            NSLayoutConstraint.activate([
+                subtitleButton.trailingAnchor.constraint(equalTo: contentOverlayView.trailingAnchor, constant: -20),
+                subtitleButton.topAnchor.constraint(equalTo: contentOverlayView.topAnchor, constant: 20)
+            ])
+        }
+    }
+    
+    @objc private func showSubtitleSelectionMenu() {
+        guard let tracks = _subtitleTracks, !tracks.isEmpty else { return }
+        
+        let alertController = UIAlertController(title: "Select Subtitle", message: nil, preferredStyle: .actionSheet)
+        
+        // Add "Off" option
+        let offAction = UIAlertAction(title: "Off", style: .default) { [weak self] _ in
+            self?.selectSubtitleTrack(trackId: nil)
+        }
+        alertController.addAction(offAction)
+        
+        // Add track options
+        for track in tracks {
+            let trackId = track["id"] as? String ?? ""
+            let label = track["label"] as? String ?? track["language"] as? String ?? trackId
+            let isSelected = trackId == (_activeSubtitleTrackId ?? _selectedSubtitleId)
+            
+            let action = UIAlertAction(title: isSelected ? "\(label) ✓" : label, style: .default) { [weak self] _ in
+                self?.selectSubtitleTrack(trackId: trackId)
+            }
+            alertController.addAction(action)
+        }
+        
+        // Add cancel
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel)
+        alertController.addAction(cancelAction)
+        
+        // Present from the video player view controller
+        var presentingVC: UIViewController?
+        if let presenting = self.videoPlayer.presentingViewController {
+            presentingVC = presenting
+        } else {
+            // Get root view controller from window scene (iOS 13+)
+            if #available(iOS 13.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let window = windowScene.windows.first {
+                    presentingVC = window.rootViewController
+                }
+            } else {
+                // Fallback for iOS 12 and earlier
+                presentingVC = UIApplication.shared.keyWindow?.rootViewController
+            }
+        }
+        
+        if let presentingVC = presentingVC {
+            // For iPad, we need to set the popover presentation
+            if let popover = alertController.popoverPresentationController {
+                popover.sourceView = self.videoPlayer.view
+                popover.sourceRect = CGRect(x: self.videoPlayer.view.bounds.width - 100, y: 20, width: 100, height: 44)
+            }
+            presentingVC.present(alertController, animated: true)
+        }
     }
     
     // MARK: - Audio Session Configuration
@@ -1162,6 +1401,67 @@ open class FullScreenVideoPlayerView: UIView {
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
             }
         }
+    }
+
+    // MARK: - Subtitle Track Management
+
+    func getSubtitleTracks() -> [[String: Any]]? {
+        guard let tracks = _subtitleTracks else { return nil }
+        var result: [[String: Any]] = []
+        for track in tracks {
+            var trackInfo: [String: Any] = [
+                "id": track["id"] as? String ?? "",
+                "language": track["language"] as? String ?? "",
+                "label": track["label"] as? String ?? track["language"] as? String ?? "",
+                "isSelected": (track["id"] as? String) == _activeSubtitleTrackId,
+                "isAvailable": true
+            ]
+            result.append(trackInfo)
+        }
+        return result
+    }
+
+    func selectSubtitleTrack(trackId: String?) {
+        _activeSubtitleTrackId = trackId
+        
+        // For HLS streams, the subtitle display will automatically switch
+        // because the time observer uses _activeSubtitleTrackId
+        if isHLSStream(url: self._url) {
+            // The subtitle display is already set up to use _activeSubtitleTrackId
+            // Just hide the label if trackId is nil
+            if trackId == nil {
+                subtitleLabel?.isHidden = true
+            }
+        } else {
+            // For non-HLS, use AVMediaSelectionGroup
+            guard let playerItem = self.playerItem else { return }
+            guard let mediaSelectionGroup = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else { return }
+            
+            if let trackId = trackId {
+                // Try to find matching option by language or track ID
+                let options = mediaSelectionGroup.options.filter { option in
+                    return option.extendedLanguageTag == trackId || 
+                           option.locale?.languageCode == trackId ||
+                           option.displayName == trackId
+                }
+                if let option = options.first {
+                    playerItem.select(option, in: mediaSelectionGroup)
+                } else if let tracks = _subtitleTracks {
+                    // If no matching option, try to create composition with selected track
+                    // This would require re-creating the player item with the selected track
+                    // For now, just log a warning
+                    print("Could not find matching subtitle option for track ID: \(trackId)")
+                }
+            } else {
+                // Disable subtitles
+                playerItem.select(nil, in: mediaSelectionGroup)
+                subtitleLabel?.isHidden = true
+            }
+        }
+    }
+
+    func getSelectedSubtitleTrack() -> String? {
+        return _activeSubtitleTrackId ?? _selectedSubtitleId
     }
 }
 

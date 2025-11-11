@@ -1,5 +1,5 @@
 import { WebPlugin } from '@capacitor/core';
-import type { CapacitorVideoPlayerPlugin, capVideoPlayerOptions, capVideoPlayerIdOptions, capVideoVolumeOptions, capVideoTimeOptions, capVideoMutedOptions, capVideoRateOptions, capVideoPlayerResult } from './definitions';
+import type { CapacitorVideoPlayerPlugin, capVideoPlayerOptions, capVideoPlayerIdOptions, capVideoVolumeOptions, capVideoTimeOptions, capVideoMutedOptions, capVideoRateOptions, capVideoPlayerResult, capSubtitleTrackOptions } from './definitions';
 export interface IPlayerSize {
     height: number;
     width: number;
@@ -9,6 +9,11 @@ export declare class CapacitorVideoPlayerWeb extends WebPlugin implements Capaci
     private videoContainer;
     private mode;
     constructor();
+    /**
+     * Convert legacy single subtitle API to new array format
+     * @private
+     */
+    private normalizeSubtitleTracks;
     echo(options: {
         value: string;
     }): Promise<capVideoPlayerResult>;
@@ -115,6 +120,22 @@ export declare class CapacitorVideoPlayerWeb extends WebPlugin implements Capaci
      *
      */
     exitFullScreen(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Get available subtitle tracks for a player
+     */
+    getSubtitleTracks(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Select a subtitle track by ID
+     */
+    selectSubtitleTrack(options: capSubtitleTrackOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Disable subtitles (hide current track)
+     */
+    disableSubtitles(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Get currently selected subtitle track
+     */
+    getSelectedSubtitleTrack(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
     private checkSize;
     private _initializeVideoPlayer;
     private _getContainerElement;

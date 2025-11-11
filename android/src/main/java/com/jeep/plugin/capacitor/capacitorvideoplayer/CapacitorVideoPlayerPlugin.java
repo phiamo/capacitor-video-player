@@ -26,8 +26,14 @@ import com.jeep.plugin.capacitor.capacitorvideoplayer.Notifications.Notification
 import com.jeep.plugin.capacitor.capacitorvideoplayer.PickerVideo.PickerVideoFragment;
 import com.jeep.plugin.capacitor.capacitorvideoplayer.Utilities.FilesUtils;
 import com.jeep.plugin.capacitor.capacitorvideoplayer.Utilities.FragmentUtils;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 @CapacitorPlugin(
     name = "CapacitorVideoPlayer",
@@ -81,6 +87,8 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
     private String subtitle = "";
     private String language = "";
     private JSObject subTitleOptions;
+    private List<SubtitleTrack> subtitleTracks = new ArrayList<>();
+    private String selectedSubtitleId = null;
     private final JSObject ret = new JSObject();
 
 
@@ -189,12 +197,58 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 call.resolve(ret);
                 return;
             }
-            if (call.getData().has("subtitle")) {
+            // Handle subtitle tracks (new API with backward compatibility)
+            subtitleTracks.clear();
+            if (call.getData().has("subtitles")) {
+                // New API: multiple subtitle tracks
+                try {
+                    JSONArray subtitlesArray = call.getData().getJSONArray("subtitles");
+                    for (int i = 0; i < subtitlesArray.length(); i++) {
+                        JSONObject trackObj = subtitlesArray.getJSONObject(i);
+                        SubtitleTrack track = new SubtitleTrack();
+                        track.setId(trackObj.optString("id", "track" + i));
+                        track.setUrl(trackObj.optString("url", ""));
+                        track.setLanguage(trackObj.optString("language", "en"));
+                        track.setLabel(trackObj.optString("label", track.getLanguage()));
+                        track.setMimeType(trackObj.optString("mimeType", null));
+                        track.setDefault(trackObj.optBoolean("isDefault", false));
+                        track.setForced(trackObj.optBoolean("isForced", false));
+                        subtitleTracks.add(track);
+                    }
+                } catch (JSONException e) {
+                    Log.e(TAG, "Error parsing subtitles array: " + e.getMessage());
+                }
+            } else if (call.getData().has("subtitle")) {
+                // Backward compatibility: single subtitle
+                Log.w(TAG, "The 'subtitle' option is deprecated. Use 'subtitles' array instead.");
                 subtitle = call.getString("subtitle");
+                language = call.getData().has("language") ? call.getString("language") : "en";
+                // Convert to new format
+                SubtitleTrack track = new SubtitleTrack();
+                track.setId(language);
+                track.setUrl(subtitle);
+                track.setLanguage(language);
+                track.setLabel(language);
+                track.setDefault(true);
+                subtitleTracks.add(track);
             }
-            if (call.getData().has("language")) {
-                language = call.getString("language");
+            
+            // Get selected subtitle ID
+            if (call.getData().has("selectedSubtitleId")) {
+                selectedSubtitleId = call.getString("selectedSubtitleId");
+            } else if (!subtitleTracks.isEmpty()) {
+                // Find default track or use first track
+                for (SubtitleTrack track : subtitleTracks) {
+                    if (track.isDefault()) {
+                        selectedSubtitleId = track.getId();
+                        break;
+                    }
+                }
+                if (selectedSubtitleId == null) {
+                    selectedSubtitleId = subtitleTracks.get(0).getId();
+                }
             }
+            
             subTitleOptions = new JSObject();
             if (call.getData().has("subtitleOptions")) {
                 subTitleOptions = call.getObject("subtitleOptions");
@@ -1208,7 +1262,9 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
         Boolean isTV,
         String playerId,
         Boolean isInternal,
-        Long videoId
+        Long videoId,
+        List<SubtitleTrack> subtitleTracks,
+        String selectedSubtitleId
     ) {
         Log.v(TAG, "§§§§ createFullScreenFragment chromecast: " + chromecast);
 
@@ -1234,7 +1290,9 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 isTV,
                 playerId,
                 isInternal,
-                videoId
+                videoId,
+                subtitleTracks,
+                selectedSubtitleId
             );
         bridge
             .getActivity()
@@ -1304,4 +1362,192 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 }
             );
     }
+
+    @PluginMethod
+    public void getSubtitleTracks(final PluginCall call) {
+        this.call = call;
+        JSObject ret = new JSObject();
+        ret.put("method", "getSubtitleTracks");
+        String playerId = call.getString("playerId");
+        if (playerId == null) {
+            ret.put("result", false);
+            ret.put("message", "Must provide a PlayerId");
+            call.resolve(ret);
+            return;
+        }
+        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
+            bridge
+                .getActivity()
+                .runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            JSObject ret = new JSObject();
+                            ret.put("method", "getSubtitleTracks");
+                            if (fsFragment != null) {
+                                try {
+                                    List<SubtitleTrack> tracks = fsFragment.subtitleTracks != null 
+                                        ? fsFragment.subtitleTracks 
+                                        : new ArrayList<>();
+                                    JSONArray tracksArray = new JSONArray();
+                                    for (SubtitleTrack track : tracks) {
+                                        JSONObject trackObj = new JSONObject();
+                                        trackObj.put("id", track.getId());
+                                        trackObj.put("language", track.getLanguage());
+                                        trackObj.put("label", track.getLabel());
+                                        trackObj.put("isSelected", track.getId().equals(fsFragment.selectedSubtitleId));
+                                        trackObj.put("isAvailable", true);
+                                        tracksArray.put(trackObj);
+                                    }
+                                    ret.put("result", true);
+                                    ret.put("value", tracksArray);
+                                } catch (JSONException e) {
+                                    ret.put("result", false);
+                                    ret.put("message", "Error building tracks: " + e.getMessage());
+                                }
+                                call.resolve(ret);
+                            } else {
+                                ret.put("result", false);
+                                ret.put("message", "Fullscreen fragment is not defined");
+                                call.resolve(ret);
+                            }
+                        }
+                    }
+                );
+        } else {
+            ret.put("result", false);
+            ret.put("message", "player is not defined");
+            call.resolve(ret);
+        }
+    }
+
+    @PluginMethod
+    public void selectSubtitleTrack(final PluginCall call) {
+        this.call = call;
+        JSObject ret = new JSObject();
+        ret.put("method", "selectSubtitleTrack");
+        String playerId = call.getString("playerId");
+        String trackId = call.getString("trackId");
+        if (playerId == null) {
+            ret.put("result", false);
+            ret.put("message", "Must provide a PlayerId");
+            call.resolve(ret);
+            return;
+        }
+        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
+            bridge
+                .getActivity()
+                .runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            JSObject ret = new JSObject();
+                            ret.put("method", "selectSubtitleTrack");
+                            if (fsFragment != null) {
+                                if (trackId == null || trackId.isEmpty()) {
+                                    fsFragment.disableSubtitles();
+                                    ret.put("result", true);
+                                    ret.put("value", null);
+                                } else {
+                                    fsFragment.selectSubtitleTrack(trackId);
+                                    ret.put("result", true);
+                                    ret.put("value", trackId);
+                                }
+                                call.resolve(ret);
+                            } else {
+                                ret.put("result", false);
+                                ret.put("message", "Fullscreen fragment is not defined");
+                                call.resolve(ret);
+                            }
+                        }
+                    }
+                );
+        } else {
+            ret.put("result", false);
+            ret.put("message", "player is not defined");
+            call.resolve(ret);
+        }
+    }
+
+    @PluginMethod
+    public void disableSubtitles(final PluginCall call) {
+        this.call = call;
+        JSObject ret = new JSObject();
+        ret.put("method", "disableSubtitles");
+        String playerId = call.getString("playerId");
+        if (playerId == null) {
+            ret.put("result", false);
+            ret.put("message", "Must provide a PlayerId");
+            call.resolve(ret);
+            return;
+        }
+        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
+            bridge
+                .getActivity()
+                .runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            JSObject ret = new JSObject();
+                            ret.put("method", "disableSubtitles");
+                            if (fsFragment != null) {
+                                fsFragment.disableSubtitles();
+                                ret.put("result", true);
+                                ret.put("value", null);
+                                call.resolve(ret);
+                            } else {
+                                ret.put("result", false);
+                                ret.put("message", "Fullscreen fragment is not defined");
+                                call.resolve(ret);
+                            }
+                        }
+                    }
+                );
+        } else {
+            ret.put("result", false);
+            ret.put("message", "player is not defined");
+            call.resolve(ret);
+        }
+    }
+
+    @PluginMethod
+    public void getSelectedSubtitleTrack(final PluginCall call) {
+        this.call = call;
+        JSObject ret = new JSObject();
+        ret.put("method", "getSelectedSubtitleTrack");
+        String playerId = call.getString("playerId");
+        if (playerId == null) {
+            ret.put("result", false);
+            ret.put("message", "Must provide a PlayerId");
+            call.resolve(ret);
+            return;
+        }
+        if ("fullscreen".equals(mode) && fsPlayerId.equals(playerId)) {
+            bridge
+                .getActivity()
+                .runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            JSObject ret = new JSObject();
+                            ret.put("method", "getSelectedSubtitleTrack");
+                            if (fsFragment != null) {
+                                ret.put("result", true);
+                                ret.put("value", fsFragment.selectedSubtitleId);
+                                call.resolve(ret);
+                            } else {
+                                ret.put("result", false);
+                                ret.put("message", "Fullscreen fragment is not defined");
+                                call.resolve(ret);
+                            }
+                        }
+                    }
+                );
+        } else {
+            ret.put("result", false);
+            ret.put("message", "player is not defined");
+            call.resolve(ret);
+        }
+    }
+
 }

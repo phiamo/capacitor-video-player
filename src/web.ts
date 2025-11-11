@@ -9,6 +9,9 @@ import type {
   capVideoMutedOptions,
   capVideoRateOptions,
   capVideoPlayerResult,
+  SubtitleTrack,
+  capSubtitleTrackOptions,
+  SubtitleTrackInfo,
 } from './definitions';
 import { VideoPlayer } from './web-utils/videoplayer';
 
@@ -28,6 +31,40 @@ export class CapacitorVideoPlayerWeb
   constructor() {
     super();
     this.addListeners();
+  }
+
+  /**
+   * Convert legacy single subtitle API to new array format
+   * @private
+   */
+  private normalizeSubtitleTracks(
+    options: capVideoPlayerOptions,
+  ): SubtitleTrack[] | null {
+    // If new API is used, return as-is
+    if (options.subtitles && options.subtitles.length > 0) {
+      return options.subtitles;
+    }
+
+    // Backward compatibility: convert old API to new format
+    if (options.subtitle) {
+      console.warn(
+        '[CapacitorVideoPlayer] The "subtitle" option is deprecated. Use "subtitles" array instead.',
+      );
+      const track: SubtitleTrack = {
+        id: options.language || 'default',
+        url: options.subtitle,
+        language: options.language || 'en',
+        label: options.language
+          ? new Intl.DisplayNames(['en'], { type: 'language' }).of(
+              options.language,
+            ) || options.language
+          : 'Subtitle',
+        isDefault: true,
+      };
+      return [track];
+    }
+
+    return null;
   }
 
   async echo(options: { value: string }): Promise<capVideoPlayerResult> {
@@ -107,6 +144,10 @@ export class CapacitorVideoPlayerWeb
       if (this.mode === 'embedded') {
         playerSize = this.checkSize(options);
       }
+      // Normalize subtitle tracks (backward compatibility)
+      const subtitleTracks = this.normalizeSubtitleTracks(options);
+      const selectedSubtitleId = options.selectedSubtitleId || null;
+
       const result = await this._initializeVideoPlayer(
         url,
         playerId,
@@ -116,6 +157,9 @@ export class CapacitorVideoPlayerWeb
         loopOnEnd,
         componentTag,
         playerSize,
+        subtitleTracks,
+        selectedSubtitleId,
+        options.subtitleOptions,
       );
       return Promise.resolve({ result: result });
     } else {
@@ -629,6 +673,117 @@ export class CapacitorVideoPlayerWeb
       });
     }
   }
+
+  /**
+   * Get available subtitle tracks for a player
+   */
+  async getSubtitleTracks(
+    options: capVideoPlayerIdOptions,
+  ): Promise<capVideoPlayerResult> {
+    if (options == null) {
+      return Promise.resolve({
+        result: false,
+        method: 'getSubtitleTracks',
+        message: 'Must provide a capVideoPlayerIdOptions object',
+      });
+    }
+    let playerId: string = options.playerId ? options.playerId : '';
+    if (playerId == null || playerId.length === 0) {
+      playerId = 'fullscreen';
+    }
+    if (this._players[playerId]) {
+      const tracks: SubtitleTrackInfo[] = this._players[playerId].getSubtitleTracks();
+      return Promise.resolve({
+        method: 'getSubtitleTracks',
+        result: true,
+        value: tracks,
+      });
+    } else {
+      return Promise.resolve({
+        method: 'getSubtitleTracks',
+        result: false,
+        message: 'Given PlayerId does not exist',
+      });
+    }
+  }
+
+  /**
+   * Select a subtitle track by ID
+   */
+  async selectSubtitleTrack(
+    options: capSubtitleTrackOptions,
+  ): Promise<capVideoPlayerResult> {
+    if (options == null) {
+      return Promise.resolve({
+        result: false,
+        method: 'selectSubtitleTrack',
+        message: 'Must provide a capSubtitleTrackOptions object',
+      });
+    }
+    let playerId: string = options.playerId ? options.playerId : '';
+    if (playerId == null || playerId.length === 0) {
+      playerId = 'fullscreen';
+    }
+    if (this._players[playerId]) {
+      const success = await this._players[playerId].selectSubtitleTrack(options.trackId);
+      return Promise.resolve({
+        method: 'selectSubtitleTrack',
+        result: success,
+        value: options.trackId,
+      });
+    } else {
+      return Promise.resolve({
+        method: 'selectSubtitleTrack',
+        result: false,
+        message: 'Given PlayerId does not exist',
+      });
+    }
+  }
+
+  /**
+   * Disable subtitles (hide current track)
+   */
+  async disableSubtitles(
+    options: capVideoPlayerIdOptions,
+  ): Promise<capVideoPlayerResult> {
+    return this.selectSubtitleTrack({
+      playerId: options.playerId,
+      trackId: null,
+    });
+  }
+
+  /**
+   * Get currently selected subtitle track
+   */
+  async getSelectedSubtitleTrack(
+    options: capVideoPlayerIdOptions,
+  ): Promise<capVideoPlayerResult> {
+    if (options == null) {
+      return Promise.resolve({
+        result: false,
+        method: 'getSelectedSubtitleTrack',
+        message: 'Must provide a capVideoPlayerIdOptions object',
+      });
+    }
+    let playerId: string = options.playerId ? options.playerId : '';
+    if (playerId == null || playerId.length === 0) {
+      playerId = 'fullscreen';
+    }
+    if (this._players[playerId]) {
+      const trackId = this._players[playerId].getSelectedSubtitleTrack();
+      return Promise.resolve({
+        method: 'getSelectedSubtitleTrack',
+        result: true,
+        value: trackId,
+      });
+    } else {
+      return Promise.resolve({
+        method: 'getSelectedSubtitleTrack',
+        result: false,
+        message: 'Given PlayerId does not exist',
+      });
+    }
+  }
   private checkSize(options: capVideoPlayerOptions): IPlayerSize {
     const playerSize: IPlayerSize = {
       width: options.width ? options.width : 320,
@@ -654,6 +809,9 @@ export class CapacitorVideoPlayerWeb
     loopOnEnd: boolean,
     componentTag: string,
     playerSize: IPlayerSize,
+    subtitleTracks: SubtitleTrack[] | null,
+    selectedSubtitleId: string | null,
+    subtitleOptions?: any,
   ): Promise<any> {
     const videoURL: string = url
       ? url.indexOf('%2F') == -1
@@ -688,6 +846,9 @@ export class CapacitorVideoPlayerWeb
         2,
         playerSize.width,
         playerSize.height,
+        subtitleTracks,
+        selectedSubtitleId,
+        subtitleOptions,
       );
       await this._players[playerId].initialize();
     } else if (mode === 'fullscreen') {
@@ -700,6 +861,11 @@ export class CapacitorVideoPlayerWeb
         loopOnEnd,
         this.videoContainer,
         99995,
+        undefined,
+        undefined,
+        subtitleTracks,
+        selectedSubtitleId,
+        subtitleOptions,
       );
       await this._players['fullscreen'].initialize();
     } else {

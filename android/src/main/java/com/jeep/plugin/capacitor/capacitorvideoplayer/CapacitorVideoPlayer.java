@@ -3,6 +3,7 @@ package com.jeep.plugin.capacitor.capacitorvideoplayer;
 import android.content.Context;
 import com.getcapacitor.JSObject;
 import com.jeep.plugin.capacitor.capacitorvideoplayer.PickerVideo.PickerVideoFragment;
+import java.util.List;
 
 public class CapacitorVideoPlayer {
 
@@ -37,7 +38,9 @@ public class CapacitorVideoPlayer {
         Boolean isTV,
         String playerId,
         Boolean isInternal,
-        Long videoId
+        Long videoId,
+        List<SubtitleTrack> subtitleTracks,
+        String selectedSubtitleId
     ) {
         FullscreenExoPlayerFragment fsFragment = new FullscreenExoPlayerFragment();
 
@@ -62,6 +65,8 @@ public class CapacitorVideoPlayer {
         fsFragment.playerId = playerId;
         fsFragment.isInternal = isInternal;
         fsFragment.videoId = videoId;
+        fsFragment.subtitleTracks = subtitleTracks;
+        fsFragment.selectedSubtitleId = selectedSubtitleId;
         return fsFragment;
     }
 

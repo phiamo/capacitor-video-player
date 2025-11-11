@@ -94,6 +94,26 @@ export interface CapacitorVideoPlayerPlugin {
      *
      */
     exitFullScreen(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Get available subtitle tracks for a player
+     *
+     */
+    getSubtitleTracks(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Select a subtitle track by ID
+     *
+     */
+    selectSubtitleTrack(options: capSubtitleTrackOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Disable subtitles (hide current track)
+     *
+     */
+    disableSubtitles(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /**
+     * Get currently selected subtitle track
+     *
+     */
+    getSelectedSubtitleTrack(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
 }
 export interface capEchoOptions {
     /**
@@ -114,15 +134,28 @@ export interface capVideoPlayerOptions {
     url?: string;
     /**
      * The url of subtitle associated with the video
+     * @deprecated Use subtitles array instead
      */
     subtitle?: string;
     /**
      * The language of subtitle
      * see https://github.com/libyal/libfwnt/wiki/Language-Code-identifiers
+     * @deprecated Use subtitles array instead
      */
     language?: string;
     /**
+     * Multiple subtitle tracks
+     * Array of subtitle track definitions
+     */
+    subtitles?: SubtitleTrack[];
+    /**
+     * Initial selected subtitle track ID
+     * If not specified, first track with isDefault=true is selected, or first track if none marked as default
+     */
+    selectedSubtitleId?: string;
+    /**
      * SubTitle Options
+     * Shared styling for all tracks (can be overridden per-track later)
      */
     subtitleOptions?: SubTitleOptions;
     /**
@@ -309,4 +342,76 @@ export interface SubTitleOptions {
      * Font Size in pixels (default 16)
      */
     fontSize?: number;
+}
+/**
+ * Subtitle track definition
+ */
+export interface SubtitleTrack {
+    /**
+     * Unique identifier for the track
+     */
+    id: string;
+    /**
+     * Subtitle file URL/path
+     */
+    url: string;
+    /**
+     * ISO 639-1 language code (e.g., "en", "es")
+     */
+    language: string;
+    /**
+     * Display label (e.g., "English", "Spanish")
+     * If not provided, language code will be used
+     */
+    label?: string;
+    /**
+     * Optional MIME type override
+     * If not provided, will be detected from file extension
+     */
+    mimeType?: string;
+    /**
+     * Default track to select
+     * If multiple tracks have isDefault=true, first one is selected
+     */
+    isDefault?: boolean;
+    /**
+     * Forced subtitle track
+     * Forced tracks are always shown when available
+     */
+    isForced?: boolean;
+}
+/**
+ * Subtitle track information (returned by getSubtitleTracks)
+ */
+export interface SubtitleTrackInfo {
+    /**
+     * Track identifier
+     */
+    id: string;
+    /**
+     * Language code
+     */
+    language: string;
+    /**
+     * Display label
+     */
+    label: string;
+    /**
+     * Whether this track is currently selected
+     */
+    isSelected: boolean;
+    /**
+     * Whether this track is available and loaded
+     */
+    isAvailable: boolean;
+}
+export interface capSubtitleTrackOptions {
+    /**
+     * Id of DIV Element parent of the player
+     */
+    playerId?: string;
+    /**
+     * ID of track to select, or null/empty string to disable subtitles
+     */
+    trackId: string | null;
 }

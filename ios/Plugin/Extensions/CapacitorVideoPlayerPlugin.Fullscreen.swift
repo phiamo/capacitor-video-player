@@ -24,7 +24,9 @@ extension CapacitorVideoPlayerPlugin {
         subTitleUrl: URL?, subTitleLanguage: String?,
         subTitleOptions: [String: Any]?,
         headers: [String: String]?, title: String?,
-        smallTitle: String?, artwork: String?) {
+        smallTitle: String?, artwork: String?,
+        subtitleTracks: [[String: Any]]?,
+        selectedSubtitleId: String?) {
         DispatchQueue.main.async { [weak self] in
             let playerId: String = self?.fsPlayerId ?? "fullscreen"
             if let fullscreenView = self?.implementation
@@ -36,7 +38,9 @@ extension CapacitorVideoPlayerPlugin {
                     displayMode: displayMode,
                     subTitleUrl: subTitleUrl,
                     language: subTitleLanguage, headers: headers, options: subTitleOptions,
-                    title: title, smallTitle: smallTitle, artwork: artwork) {
+                    title: title, smallTitle: smallTitle, artwork: artwork,
+                    subtitleTracks: subtitleTracks,
+                    selectedSubtitleId: selectedSubtitleId) {
                 self?.videoPlayerFullScreenView = fullscreenView
                 if backModeEnabled {
                     self?.bgPlayer = self?.videoPlayerFullScreenView?
