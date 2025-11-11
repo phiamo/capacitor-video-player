@@ -68,6 +68,8 @@ import com.google.android.exoplayer2.trackselection.AdaptiveTrackSelection;
 import com.google.android.exoplayer2.trackselection.DefaultTrackSelector;
 import com.google.android.exoplayer2.trackselection.ExoTrackSelection;
 import com.google.android.exoplayer2.trackselection.TrackSelector;
+import com.google.android.exoplayer2.trackselection.TrackSelectionParameters;
+import com.google.android.exoplayer2.source.TrackGroupArray;
 import com.google.android.exoplayer2.ui.AspectRatioFrameLayout;
 import com.google.android.exoplayer2.ui.CaptionStyleCompat;
 import com.google.android.exoplayer2.ui.DefaultTimeBar;
@@ -860,11 +862,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     };
     if (sturi != null || (subtitleTracks != null && !subtitleTracks.isEmpty())) {
       setSubtitle(false);
-      // Select initial subtitle track if specified
-      if (selectedSubtitleId != null && !selectedSubtitleId.isEmpty()) {
-        // Note: Track selection happens after player is ready
-        // We'll select it in the player ready listener
-      }
     }
     //Use Media Session Connector from the EXT library to enable MediaSession Controls in PIP.
     mediaSession = new MediaSessionCompat(context, "capacitorvideoplayer");
@@ -1098,9 +1095,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Select a subtitle track by ID
    */
   public void selectSubtitleTrack(String trackId) {
-    if (player == null || trackSelector == null) return;
+    if (player == null || trackSelector == null || !(trackSelector instanceof DefaultTrackSelector)) return;
     
     try {
+      DefaultTrackSelector defaultTrackSelector = (DefaultTrackSelector) trackSelector;
+      
       // Find the track in our subtitleTracks list to get language
       String trackLanguage = null;
       if (subtitleTracks != null) {
@@ -1112,41 +1111,63 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
       }
       
-      com.google.android.exoplayer2.trackselection.DefaultTrackSelector.Parameters params = 
-          trackSelector.getParameters();
-      com.google.android.exoplayer2.trackselection.DefaultTrackSelector.Parameters.Builder paramsBuilder = 
-          params.buildUpon();
+      DefaultTrackSelector.Parameters params = defaultTrackSelector.getParameters();
+      DefaultTrackSelector.Parameters.Builder paramsBuilder = params.buildUpon();
       
       // Enable text tracks
       paramsBuilder.setRendererDisabled(C.TRACK_TYPE_TEXT, false);
       
-      // Find and select the track
-      com.google.android.exoplayer2.Tracks tracks = player.getCurrentTracks();
-      for (com.google.android.exoplayer2.Tracks.Group trackGroup : tracks.getGroups()) {
-        if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
-          for (int i = 0; i < trackGroup.length; i++) {
-            com.google.android.exoplayer2.Format format = trackGroup.getTrackFormat(i);
-            // Try to match by format.id, language, or label
-            boolean matches = false;
-            if (format.id != null && format.id.equals(trackId)) {
-              matches = true;
-            } else if (trackLanguage != null && format.language != null && 
-                       format.language.equals(trackLanguage)) {
-              matches = true;
-            } else if (format.language != null && format.language.equals(trackId)) {
-              matches = true;
+      // Get TrackGroupArray from player's current tracks
+      if (player.getCurrentTracks() != null) {
+        com.google.android.exoplayer2.Tracks tracks = player.getCurrentTracks();
+        
+        // Collect all text track groups to build TrackGroupArray
+        java.util.ArrayList<com.google.android.exoplayer2.source.TrackGroup> textTrackGroups = new java.util.ArrayList<>();
+        
+        for (com.google.android.exoplayer2.Tracks.Group g : tracks.getGroups()) {
+          if (g.getType() == C.TRACK_TYPE_TEXT) {
+            // Build TrackGroup from formats
+            com.google.android.exoplayer2.Format[] formats = new com.google.android.exoplayer2.Format[g.length];
+            for (int idx = 0; idx < g.length; idx++) {
+              formats[idx] = g.getTrackFormat(idx);
             }
-            
-            if (matches) {
-              paramsBuilder.setSelectionOverride(
-                  trackGroup.getMediaTrackGroupIndex(),
-                  trackSelector.getParameters(),
-                  new com.google.android.exoplayer2.trackselection.DefaultTrackSelector.SelectionOverride(0, i)
-              );
-              trackSelector.setParameters(paramsBuilder.build());
-              selectedSubtitleId = trackId;
-              Log.v(TAG, "Selected subtitle track: " + trackId);
-              return;
+            textTrackGroups.add(new com.google.android.exoplayer2.source.TrackGroup(formats));
+          }
+        }
+        
+        if (!textTrackGroups.isEmpty()) {
+          TrackGroupArray trackGroupArray = new TrackGroupArray(textTrackGroups.toArray(new com.google.android.exoplayer2.source.TrackGroup[0]));
+          
+          // Find and select the track
+          int textGroupCounter = 0;
+          for (com.google.android.exoplayer2.Tracks.Group trackGroup : tracks.getGroups()) {
+            if (trackGroup.getType() == C.TRACK_TYPE_TEXT) {
+              for (int i = 0; i < trackGroup.length; i++) {
+                com.google.android.exoplayer2.Format format = trackGroup.getTrackFormat(i);
+                // Try to match by format.id, language, or label
+                boolean matches = false;
+                if (format.id != null && format.id.equals(trackId)) {
+                  matches = true;
+                } else if (trackLanguage != null && format.language != null && 
+                           format.language.equals(trackLanguage)) {
+                  matches = true;
+                } else if (format.language != null && format.language.equals(trackId)) {
+                  matches = true;
+                }
+                
+                if (matches) {
+                  paramsBuilder.setSelectionOverride(
+                      textGroupCounter,
+                      trackGroupArray,
+                      new DefaultTrackSelector.SelectionOverride(0, i)
+                  );
+                  defaultTrackSelector.setParameters(paramsBuilder.build());
+                  selectedSubtitleId = trackId;
+                  Log.v(TAG, "Selected subtitle track: " + trackId);
+                  return;
+                }
+              }
+              textGroupCounter++;
             }
           }
         }
@@ -1161,14 +1182,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Disable subtitles
    */
   public void disableSubtitles() {
-    if (player == null || trackSelector == null) return;
+    if (player == null || trackSelector == null || !(trackSelector instanceof DefaultTrackSelector)) return;
     try {
-      com.google.android.exoplayer2.trackselection.DefaultTrackSelector.Parameters params = 
-          trackSelector.getParameters();
-      com.google.android.exoplayer2.trackselection.DefaultTrackSelector.Parameters.Builder paramsBuilder = 
-          params.buildUpon();
+      DefaultTrackSelector defaultTrackSelector = (DefaultTrackSelector) trackSelector;
+      DefaultTrackSelector.Parameters params = defaultTrackSelector.getParameters();
+      DefaultTrackSelector.Parameters.Builder paramsBuilder = params.buildUpon();
       paramsBuilder.setRendererDisabled(C.TRACK_TYPE_TEXT, true);
-      trackSelector.setParameters(paramsBuilder.build());
+      defaultTrackSelector.setParameters(paramsBuilder.build());
       selectedSubtitleId = null;
     } catch (Exception e) {
       Log.e(TAG, "Error disabling subtitles: " + e.getMessage());

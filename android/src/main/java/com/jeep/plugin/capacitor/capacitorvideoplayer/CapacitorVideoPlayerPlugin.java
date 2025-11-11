@@ -1047,7 +1047,9 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
               isTV,
               playerId,
               false,
-              null
+              null,
+              subtitleTracks,
+              selectedSubtitleId
             );
           } else {
             Map<String, Object> info = new HashMap<String, Object>() {
@@ -1223,7 +1225,9 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                                 isTV,
                                 fsPlayerId,
                                 true,
-                                videoId
+                                videoId,
+                                subtitleTracks,
+                                selectedSubtitleId
                             );
                         } else {
                             Toast.makeText(context, "No Video files found ", Toast.LENGTH_SHORT).show();
