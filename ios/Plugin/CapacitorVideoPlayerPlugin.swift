@@ -193,14 +193,13 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 // Backward compatibility: single subtitle
                 print("[CapacitorVideoPlayer] The 'subtitle' option is deprecated. Use 'subtitles' array instead.")
                 let stLanguage = call.options["language"] as? String ?? "en"
-                let track: [String: Any] = [
+                subtitleTracks = [[
                     "id": stLanguage,
                     "url": stPath,
                     "language": stLanguage,
                     "label": stLanguage,
                     "isDefault": true
-                ]
-                subtitleTracks = [track]
+                ]]
             }
             
             // Get selected subtitle ID
@@ -221,10 +220,18 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
             
             // Legacy single subtitle for backward compatibility
             var subTitlePath: String = ""
-            var subTitleLanguage: String = ""
-            if !subtitleTracks.isEmpty, let firstTrack = subtitleTracks[0] as? [String: Any] {
+            if !subtitleTracks.isEmpty {
+                let firstTrack = subtitleTracks[0]
                 subTitlePath = firstTrack["url"] as? String ?? ""
+            } else if let stPath = call.options["subtitle"] as? String {
+                subTitlePath = stPath
+            }
+            var subTitleLanguage: String = ""
+            if !subtitleTracks.isEmpty {
+                let firstTrack = subtitleTracks[0]
                 subTitleLanguage = firstTrack["language"] as? String ?? ""
+            } else if let stLanguage = call.options["language"] as? String {
+                subTitleLanguage = stLanguage
             }
 
             let subTitleOptions: [String: Any] = call.getObject("subtitleOptions") ?? [:]
@@ -736,7 +743,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         
         if self.mode == "fullscreen" && self.fsPlayerId == playerId {
             if let playerView = self.videoPlayerFullScreenView {
-                DispatchQueue.main.async { [weak self] in
+                DispatchQueue.main.async { [playerView] in
                     // Pause the video if it's playing
                     if playerView.isPlaying {
                         playerView.pause()
@@ -759,82 +766,6 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
             print(error)
             call.resolve([ "result": false, "method": "exitFullScreen", "message": error])
             return
-        }
-    }
-
-    // MARK: - Subtitle Track Management
-
-    @objc func getSubtitleTracks(_ call: CAPPluginCall) {
-        self.call = call
-        guard let playerId = call.options["playerId"] as? String else {
-            let error: String = "Must provide a playerId"
-            print(error)
-            call.resolve([ "result": false, "method": "getSubtitleTracks", "message": error])
-            return
-        }
-        if self.mode == "fullscreen" && self.fsPlayerId == playerId {
-            if let playerView = self.videoPlayerFullScreenView {
-                DispatchQueue.main.async {
-                    if let tracks = playerView.getSubtitleTracks() {
-                        call.resolve([ "result": true, "method": "getSubtitleTracks", "value": tracks])
-                    } else {
-                        call.resolve([ "result": false, "method": "getSubtitleTracks", "message": "No tracks available"])
-                    }
-                }
-            } else {
-                call.resolve([ "result": false, "method": "getSubtitleTracks", "message": "Fullscreen player not found"])
-            }
-        } else {
-            call.resolve([ "result": false, "method": "getSubtitleTracks", "message": "Invalid player mode or playerId mismatch"])
-        }
-    }
-
-    @objc func selectSubtitleTrack(_ call: CAPPluginCall) {
-        self.call = call
-        guard let playerId = call.options["playerId"] as? String else {
-            let error: String = "Must provide a playerId"
-            print(error)
-            call.resolve([ "result": false, "method": "selectSubtitleTrack", "message": error])
-            return
-        }
-        let trackId = call.options["trackId"] as? String
-        if self.mode == "fullscreen" && self.fsPlayerId == playerId {
-            if let playerView = self.videoPlayerFullScreenView {
-                DispatchQueue.main.async {
-                    playerView.selectSubtitleTrack(trackId: trackId)
-                    call.resolve([ "result": true, "method": "selectSubtitleTrack", "value": trackId ?? NSNull()])
-                }
-            } else {
-                call.resolve([ "result": false, "method": "selectSubtitleTrack", "message": "Fullscreen player not found"])
-            }
-        } else {
-            call.resolve([ "result": false, "method": "selectSubtitleTrack", "message": "Invalid player mode or playerId mismatch"])
-        }
-    }
-
-    @objc func disableSubtitles(_ call: CAPPluginCall) {
-        selectSubtitleTrack(call)
-    }
-
-    @objc func getSelectedSubtitleTrack(_ call: CAPPluginCall) {
-        self.call = call
-        guard let playerId = call.options["playerId"] as? String else {
-            let error: String = "Must provide a playerId"
-            print(error)
-            call.resolve([ "result": false, "method": "getSelectedSubtitleTrack", "message": error])
-            return
-        }
-        if self.mode == "fullscreen" && self.fsPlayerId == playerId {
-            if let playerView = self.videoPlayerFullScreenView {
-                DispatchQueue.main.async {
-                    let trackId = playerView.getSelectedSubtitleTrack()
-                    call.resolve([ "result": true, "method": "getSelectedSubtitleTrack", "value": trackId ?? NSNull()])
-                }
-            } else {
-                call.resolve([ "result": false, "method": "getSelectedSubtitleTrack", "message": "Fullscreen player not found"])
-            }
-        } else {
-            call.resolve([ "result": false, "method": "getSelectedSubtitleTrack", "message": "Invalid player mode or playerId mismatch"])
         }
     }
 }

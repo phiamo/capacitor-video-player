@@ -871,3 +871,5 @@ Potential improvements for subtitle support:
 ### TypeScript Definitions
 - `src/definitions.ts` - Subtitle option interfaces
 
+
+

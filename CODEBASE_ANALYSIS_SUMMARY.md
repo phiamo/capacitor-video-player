@@ -529,3 +529,5 @@ Then handle in `initPlayer` implementations across all platforms.
 
 This plugin provides a solid foundation for cross-platform video playback with clear separation between interface and implementation. The event-driven architecture and player management system make it extensible, while platform-specific optimizations ensure native performance. When extending, follow the established patterns: define in TypeScript, implement across all platforms, and use the notification system for events.
 
+
+

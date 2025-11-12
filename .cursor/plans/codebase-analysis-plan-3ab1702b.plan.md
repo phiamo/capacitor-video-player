@@ -1,263 +1,157 @@
 <!-- 3ab1702b-8578-4a79-9506-fa9e1cc2d9e1 8c47cd0c-3128-425e-ab5b-a2660c409d3b -->
-# Integrate HLS External Subtitles into Native iOS AVPlayerViewController Controls
+# Extend Existing Custom Subtitle Menu with All Languages
 
 ## Problem Analysis
 
-Currently, the implementation uses a custom CC button with a UIAlertController menu. The user wants to integrate multiple subtitle languages directly into AVPlayerViewController's native subtitle menu (which appears when tapping the video controls), similar to how speed selection and other native controls work.
+The current implementation already has:
 
-### Key Context:
+- A custom CC button (line 797) that always shows "CC"
+- A `showSubtitleSelectionMenu()` method (lines 818-870) that iterates through `_subtitleTracks` and adds each to a UIAlertController
+- Custom UILabel rendering for HLS streams with manual timing
 
-1. **Subtitle Source**: All subtitles come from the plugin's `subtitles` array (line 189-190 in `CapacitorVideoPlayerPlugin.swift`)
-2. **Stream Type**: Primarily HLS streams (`.m3u8`), no embedded subtitles in HLS manifest
-3. **Subtitle Format**: External VTT/SRT files provided via URLs in the `subtitles` array
-4. **Goal**: Make all subtitle languages appear in the native AVPlayerViewController subtitle menu
+The user wants to ensure all languages from the `subtitles` array appear in the menu and improve the button to show the current language instead of just "CC".
 
-### Current Implementation:
+## Current Implementation Review
 
-- Custom CC button in `contentOverlayView` (lines 794-816 in `FullScreenVideoPlayerView.swift`)
-- For HLS: Custom UILabel rendering with manual timing (`loadAllSubtitleTracksForHLS`, `setupHLSSubtitleDisplay`)
-- Subtitles are loaded from external URLs and parsed manually
-- Custom menu via `UIAlertController` when CC button is tapped
+### What Already Works:
 
-### Technical Challenge:
+1. **Menu Iteration** (lines 830-839): Already loops through all tracks and adds them to the menu
+2. **Track Selection** (line 836): Calls `selectSubtitleTrack(trackId:)` when a language is selected
+3. **Custom Rendering**: UILabel-based subtitle display for HLS streams
 
-For HLS streams, external subtitle files cannot be directly added to `AVMutableComposition` without breaking HLS features (adaptive streaming, etc.). However, we can create a composition that includes the HLS video/audio tracks plus external subtitle text tracks.
+### What Needs Improvement:
+
+1. **Button Label**: Currently always shows "CC" (line 797), should show current language or "CC" when none selected
+2. **Menu Display**: Ensure all languages appear correctly (code already does this, but may need verification)
+3. **Button Visibility**: Ensure button appears when subtitles are available
 
 ## Solution Approach
 
-### Primary Strategy: Composition-Based Approach for HLS
+Keep the existing simple approach:
 
-1. **Create AVMutableComposition from HLS Asset**:
-
-   - Extract video and audio tracks from HLS `AVURLAsset`
-   - Add all external subtitle files as text tracks to composition
-   - Set proper metadata (language, locale) on each subtitle track
-   - Create `AVPlayerItem` from composition
-
-2. **Metadata Configuration**:
-
-   - Set language code and locale on each text track
-   - Use `AVMetadataItem` to ensure proper display names in native menu
-   - Match track IDs with provided subtitle track IDs
-
-3. **Remove Custom UI**:
-
-   - Remove custom CC button
-   - Remove custom UILabel rendering (use native rendering)
-   - Let AVPlayerViewController handle all subtitle display and selection
-
-4. **Track Selection**:
-
-   - Use `AVMediaSelectionGroup` to programmatically select tracks
-   - Observe `AVPlayerItemMediaSelectionDidChangeNotification` to sync with user selections
+- Keep custom CC button
+- Keep UIAlertController menu (already iterates through tracks)
+- Update button label to show current language
+- Ensure menu shows all languages properly
+- Keep existing custom UILabel rendering
 
 ## Implementation Plan
 
-### Step 1: Create Method to Build Composition from HLS with Subtitles
+### Step 1: Update Button Label to Show Current Language
 
 **File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
 
-- Create new method `createCompositionFromHLSWithSubtitles`:
-  - Accepts HLS `AVURLAsset` and array of subtitle track dictionaries
-  - Create `AVMutableComposition`
-  - Load and extract video tracks from HLS asset
-  - Load and extract audio tracks from HLS asset
-  - Add video/audio tracks to composition
-  - Call helper to add all subtitle tracks
-  - Return composition
+- Modify `addSubtitleSelectionButton` method (line 794):
+  - Instead of hardcoded "CC", determine current language from `_activeSubtitleTrackId` or `_selectedSubtitleId`
+  - Look up label from `_subtitleTracks` array
+  - Set button title to language label (e.g., "German", "English") or "CC" if none selected
+  - Store reference to button for later updates
 
-### Step 2: Create Method to Add Multiple Subtitle Tracks
+### Step 2: Create Method to Update Button Label
 
 **File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
 
-- Create method `addMultipleSubtitleTracksToComposition`:
-  - Accepts `AVMutableComposition`, array of subtitle track dictionaries, video duration
-  - For each subtitle track in array:
-    - Get subtitle URL from `track["url"]`
-    - Create `AVAsset` from subtitle URL (WebVTT files work directly)
-    - For SRT: Convert to WebVTT format first
-    - Load subtitle asset tracks
-    - Add as text track to composition
-    - Apply metadata (language, locale, label)
+- Create method `updateSubtitleButtonLabel`:
+  - Get current active track ID from `_activeSubtitleTrackId` or `_selectedSubtitleId`
+  - Find matching track in `_subtitleTracks` array
+  - Extract label (prefer `label`, fallback to `language`, fallback to `id`)
+  - Update button title to show language or "CC" if none selected
+  - Call this method whenever subtitle selection changes
 
-### Step 3: Convert SRT to WebVTT for AVFoundation
+### Step 3: Update Button Label on Track Selection
 
 **File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
 
-- Create helper method `convertSRTToWebVTT`:
-  - Parse SRT content
-  - Convert to WebVTT format
-  - Create temporary file or return WebVTT string
-  - Return URL to WebVTT file
+- In `selectSubtitleTrack` method (line 1520):
+  - After setting `_activeSubtitleTrackId`
+  - Call `updateSubtitleButtonLabel()` to refresh button display
+  - Ensure this happens for both HLS and non-HLS streams
 
-### Step 4: Set Metadata on Subtitle Tracks
-
-**File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
-
-- Create method `applyMetadataToSubtitleTrack`:
-  - Accepts composition track and subtitle track dictionary
-  - Get language code from `track["language"]`
-  - Get locale identifier (derive from language if needed)
-  - Get label from `track["label"]` or language
-  - Use `AVMutableMetadataItem` to set:
-    - Language identifier
-    - Locale
-    - Extended language tag
-  - Apply metadata to track
-
-### Step 5: Update HLS Stream Initialization
+### Step 4: Ensure Menu Shows All Languages
 
 **File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
 
-- Modify `loadAllSubtitleTracksForHLS` method (line 227):
-  - Instead of loading for custom rendering, create composition
-  - Call `createCompositionFromHLSWithSubtitles`
-  - Create `AVPlayerItem` from composition
-  - Set player item on player
-  - Remove all custom UILabel setup code
+- Verify `showSubtitleSelectionMenu` method (lines 818-870):
+  - Already iterates through `_subtitleTracks` (line 830)
+  - Already extracts label properly (line 832)
+  - Already shows selected state with checkmark (line 835)
+  - No changes needed, but verify it's being called correctly
 
-### Step 6: Remove Custom Subtitle UI
-
-**File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
-
-- Remove `addSubtitleSelectionButton` method (lines 794-816)
-- Remove `showSubtitleSelectionMenu` method (lines 818-875)
-- Remove call to `addSubtitleSelectionButton` in `setupPlayer` (line 787)
-- Remove `setupHLSSubtitleDisplay` method (lines 305-380)
-- Remove `subtitleLabel` property (line 56)
-- Remove `subtitleTracksData` property (line 55) - no longer needed for display
-- Remove `subtitleTimeObserver` property (line 50)
-- Remove manual subtitle parsing and timing logic
-
-### Step 7: Update Track Selection to Use Native Selection
+### Step 5: Ensure Button is Added When Subtitles Available
 
 **File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
 
-- Modify `selectSubtitleTrack` (line 1520):
-  - Get `AVMediaSelectionGroup` for `.legible` characteristic from `playerItem.asset`
-  - Find matching option by:
-    - Language code (`option.locale?.languageCode`)
-    - Locale identifier (`option.locale?.identifier`)
-    - Extended language tag (`option.extendedLanguageTag`)
-    - Display name (`option.displayName`)
-  - Use `playerItem.select(option, in: mediaSelectionGroup)` for native selection
-  - Remove all custom UILabel hiding/showing logic
-  - Remove HLS-specific custom rendering logic
+- In `setupPlayer` method (line 787):
+  - Verify `addSubtitleSelectionButton()` is called when `_subtitleTracks` is not empty
+  - Ensure button is added for both HLS and non-HLS streams
 
-### Step 8: Observe Native Selection Changes
+### Step 6: Store Button Reference for Updates
 
 **File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
 
-- In `addObservers` method (line 1191):
-  - Add observer for `AVPlayerItemMediaSelectionDidChangeNotification`:
-    - Update `_activeSubtitleTrackId` when user selects from native menu
-    - Sync with plugin state if needed
-    - Store observer reference for cleanup
+- Add property to store button reference:
+  - Add `private var subtitleButton: UIButton?` property
+  - Store button reference in `addSubtitleSelectionButton`
+  - Use stored reference in `updateSubtitleButtonLabel`
 
-### Step 9: Handle Initial Track Selection
+## Technical Details
 
-**File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
-
-- After composition is created and player item is ready:
-  - If `selectedSubtitleId` is provided, find matching track in `AVMediaSelectionGroup`
-  - Select that track programmatically
-  - Ensure initial selection happens after asset tracks are loaded
-
-### Step 10: Clean Up Unused Code
-
-**File**: `ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`
-
-- Remove `parseVTTContent`, `parseSRTContent` methods (if only used for display)
-- Remove `findSubtitleForTime` method (if only used for display)
-- Remove `parseRGBA` method (if only used for custom label styling)
-- Keep parsing methods if needed for SRT to WebVTT conversion
-
-## Technical Implementation Details
-
-### Creating Composition from HLS:
+### Button Label Logic:
 
 ```swift
-let composition = AVMutableComposition()
-// Load HLS asset tracks
-hlsAsset.loadValuesAsynchronously(forKeys: ["tracks"]) {
-    let videoTracks = hlsAsset.tracks(withMediaType: .video)
-    let audioTracks = hlsAsset.tracks(withMediaType: .audio)
-    // Add to composition
-    // Then add subtitle tracks
-}
-```
-
-### Adding WebVTT Subtitle Track:
-
-```swift
-// WebVTT files can be loaded as AVAsset
-let subtitleAsset = AVURLAsset(url: vttURL)
-subtitleAsset.loadValuesAsynchronously(forKeys: ["tracks"]) {
-    if let textTrack = subtitleAsset.tracks(withMediaType: .text).first {
-        let compositionTrack = composition.addMutableTrack(
-            withMediaType: .text,
-            preferredTrackID: kCMPersistentTrackID_Invalid)
-        try compositionTrack.insertTimeRange(
-            CMTimeRangeMake(start: .zero, duration: videoDuration),
-            of: textTrack,
-            at: .zero)
-        // Apply metadata
+private func updateSubtitleButtonLabel() {
+    guard let button = subtitleButton else { return }
+    
+    let currentTrackId = _activeSubtitleTrackId ?? _selectedSubtitleId
+    var buttonTitle = "CC"
+    
+    if let trackId = currentTrackId,
+       let tracks = _subtitleTracks,
+       let track = tracks.first(where: { ($0["id"] as? String) == trackId }) {
+        buttonTitle = track["label"] as? String 
+                   ?? track["language"] as? String 
+                   ?? trackId
     }
+    
+    button.setTitle(buttonTitle, for: .normal)
 }
 ```
 
-### Setting Track Metadata:
+### Track Selection Update:
 
 ```swift
-// Metadata is set via AVAssetTrack properties
-// Language and locale are typically set when creating the track
-// We may need to use AVMutableCompositionTrack's metadata property
-// Or set via AVMediaSelectionOption when available
+// In selectSubtitleTrack method, after setting _activeSubtitleTrackId:
+_activeSubtitleTrackId = trackId
+updateSubtitleButtonLabel()
 ```
-
-## Important Considerations
-
-1. **HLS Compatibility**: Creating composition from HLS may affect adaptive streaming. Test adaptive bitrate switching.
-
-2. **Subtitle Format**: WebVTT is natively supported. SRT files need conversion to WebVTT.
-
-3. **Track Identification**: Ensure each track has unique metadata for selection matching.
-
-4. **Performance**: Loading multiple subtitle files asynchronously. Show loading state if needed.
-
-5. **Authentication**: Subtitle URLs may require headers (from `_stHeaders`). Use `AVURLAsset` with options.
 
 ## Testing Requirements
 
-1. Test with 3+ subtitle languages in `subtitles` array
-2. Verify all languages appear in native AVPlayerViewController menu
-3. Test track selection from native menu works
-4. Verify subtitles display correctly via native rendering
-5. Test with WebVTT and SRT formats
-6. Test initial track selection via `selectedSubtitleId`
-7. Verify native controls show/hide properly
-8. Test HLS adaptive streaming still works
-9. Test with authenticated subtitle URLs
+1. Verify button shows current language (e.g., "German", "English") instead of always "CC"
+2. Verify button shows "CC" when no subtitle is selected
+3. Verify menu shows all languages from `subtitles` array
+4. Verify menu shows checkmark (✓) next to selected language
+5. Verify selecting a language updates button label
+6. Verify selecting "Off" updates button to "CC"
+7. Test with 3+ subtitle languages
+8. Test with HLS streams
+9. Test button appears when subtitles are available
 
 ## Files to Modify
 
 1. **`ios/Plugin/VideoPlayer/FullScreenVideoPlayerView.swift`**:
 
-   - `loadAllSubtitleTracksForHLS`: Replace with composition-based approach
-   - Add: `createCompositionFromHLSWithSubtitles`
-   - Add: `addMultipleSubtitleTracksToComposition`
-   - Add: `applyMetadataToSubtitleTrack`
-   - Add: `convertSRTToWebVTT` (if needed)
-   - Update: `selectSubtitleTrack` to use native selection
-   - Update: `addObservers` to observe native selection changes
-   - Remove: `addSubtitleSelectionButton`, `showSubtitleSelectionMenu`, `setupHLSSubtitleDisplay`
-   - Remove: Custom subtitle rendering properties and logic
+   - `addSubtitleSelectionButton`: Update to show current language instead of "CC"
+   - Add: `updateSubtitleButtonLabel` method
+   - Add: `subtitleButton` property to store button reference
+   - Update: `selectSubtitleTrack` to call `updateSubtitleButtonLabel()`
+   - Verify: `showSubtitleSelectionMenu` already iterates through all tracks (no changes needed)
 
 2. **No changes needed to**:
 
-   - `ios/Plugin/CapacitorVideoPlayerPlugin.swift` (API interface unchanged)
+   - `ios/Plugin/CapacitorVideoPlayerPlugin.swift` (API unchanged)
    - `ios/Plugin/Extensions/*.swift` (interface unchanged)
-   - TypeScript definitions (API remains the same)
+   - TypeScript definitions (API unchanged)
 
 ### To-dos
 
