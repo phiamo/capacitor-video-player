@@ -94,6 +94,11 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
     // swiftlint:disable function_body_length
     // swiftlint:disable cyclomatic_complexity
     @objc func initPlayer(_ call: CAPPluginCall) {
+        print("🎬 ========================================")
+        print("🎬 initPlayer() CALLED")
+        print("🎬 ========================================")
+        print("   Options: \(call.options)")
+        
         self.call = call
         
         // Reset dismissal state for new player
@@ -287,7 +292,13 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                     }
                     subTitle = sturl
                 }
-                guard let call = self.call else { return }
+                guard let call = self.call else {
+                    print("   ❌ ERROR: call is nil, cannot create video player")
+                    return
+                }
+                print("   ✅ About to call createVideoPlayerFullscreenView...")
+                print("   URL: \(url.absoluteString)")
+                print("   Subtitle tracks count: \(subtitleTracks.count)")
                 self.createVideoPlayerFullscreenView(
                     call: call, videoUrl: url, rate: videoRate,
                     exitOnEnd: exitOnEnd, loopOnEnd: loopOnEnd,

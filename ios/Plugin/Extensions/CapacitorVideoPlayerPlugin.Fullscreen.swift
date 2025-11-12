@@ -28,8 +28,13 @@ extension CapacitorVideoPlayerPlugin {
         subtitleTracks: [[String: Any]]?,
         selectedSubtitleId: String?) {
         DispatchQueue.main.async { [weak self] in
+            print("🎬 createVideoPlayerFullscreenView called")
             let playerId: String = self?.fsPlayerId ?? "fullscreen"
-            if let fullscreenView = self?.implementation
+            print("   Player ID: \(playerId)")
+            print("   Video URL: \(videoUrl.absoluteString)")
+            print("   Subtitle tracks count: \(subtitleTracks?.count ?? 0)")
+            
+            let fullscreenView = self?.implementation
                 .createFullscreenPlayer(
                     playerId: playerId, videoUrl: videoUrl,
                     rate: rate, exitOnEnd: exitOnEnd, loopOnEnd: loopOnEnd,
@@ -40,23 +45,52 @@ extension CapacitorVideoPlayerPlugin {
                     language: subTitleLanguage, headers: headers, options: subTitleOptions,
                     title: title, smallTitle: smallTitle, artwork: artwork,
                     subtitleTracks: subtitleTracks,
-                    selectedSubtitleId: selectedSubtitleId) {
+                    selectedSubtitleId: selectedSubtitleId)
+            
+            print("   FullscreenView created: \(fullscreenView != nil)")
+            
+            if let fullscreenView = fullscreenView {
+                print("   ✅ FullscreenView is not nil")
                 self?.videoPlayerFullScreenView = fullscreenView
+                print("   ✅ videoPlayerFullScreenView assigned")
+                
                 if backModeEnabled {
                     self?.bgPlayer = self?.videoPlayerFullScreenView?
                         .videoPlayer.player
                 }
+                
+                print("   Checking videoPlayer...")
+                print("   videoPlayerFullScreenView?.videoPlayer: \(fullscreenView.videoPlayer)")
+                
                 guard let videoPlayer: AVPlayerViewController =
                         self?.videoPlayerFullScreenView?.videoPlayer else {
                     let error: String = "No videoPlayer available"
-                    print(error)
+                    print("   ❌ ERROR: \(error)")
+                    print("   videoPlayerFullScreenView is nil: \(self?.videoPlayerFullScreenView == nil)")
+                    print("   videoPlayerFullScreenView?.videoPlayer is nil: \(self?.videoPlayerFullScreenView?.videoPlayer == nil)")
                     call.resolve([ "result": false, "method": "createVideoPlayerFullScreenView",
                                    "message": error])
                     return
                 }
+                
+                print("   ✅ videoPlayer is available")
+                print("   ✅ Setting delegate...")
                 videoPlayer.delegate = self
-                self?.bridge?.viewController?.present(
+                
+                print("   ✅ Presenting video player...")
+                print("   bridge?.viewController: \(self?.bridge?.viewController != nil)")
+                
+                guard let viewController = self?.bridge?.viewController else {
+                    let error: String = "No view controller available for presentation"
+                    print("   ❌ ERROR: \(error)")
+                    call.resolve([ "result": false, "method": "createVideoPlayerFullScreenView",
+                                   "message": error])
+                    return
+                }
+                
+                viewController.present(
                     videoPlayer, animated: true, completion: {
+                        print("   ✅ Video player presentation completed")
                         if backModeEnabled {
                             // add audio session
                             self?.audioSession = AVAudioSession.sharedInstance()

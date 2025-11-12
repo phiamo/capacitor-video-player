@@ -213,6 +213,15 @@ open class FullScreenVideoPlayerView: UIView {
           print("   📹 Is HLS stream: \(isHLS)")
           
           if isHLS {
+              print("   🎬 HLS stream with multiple subtitle tracks detected")
+              print("   🎥 Setting up player immediately (subtitles will load asynchronously)...")
+              // CRITICAL: Set up player immediately so it can be presented
+              // Subtitles will be loaded asynchronously via loadAllSubtitleTracksForHLS()
+              self.playerItem = AVPlayerItem(asset: self.videoAsset)
+              self.player = AVPlayer(playerItem: self.playerItem)
+              self.setupPlayer()
+              
+              // Now load subtitle tracks asynchronously
               print("   🎬 Calling loadAllSubtitleTracksForHLS()...")
               self.loadAllSubtitleTracksForHLS()
           } else {
@@ -560,6 +569,34 @@ open class FullScreenVideoPlayerView: UIView {
         return urlString.contains(".m3u8") || urlString.contains("m3u8")
     }
     
+    /// Normalizes a URL string by converting HTTP to HTTPS for iOS App Transport Security compliance
+    /// This ensures all network requests use secure connections as required by iOS
+    /// - Parameter urlString: The original URL string (may be HTTP or HTTPS)
+    /// - Returns: The normalized URL string with HTTPS scheme
+    private func normalizeSubtitleURL(_ urlString: String) -> String {
+        if urlString.hasPrefix("http://") {
+            let normalized = urlString.replacingOccurrences(of: "http://", with: "https://")
+            print("   🔒 Converting HTTP to HTTPS for ATS compliance: \(normalized)")
+            return normalized
+        }
+        return urlString
+    }
+    
+    /// Normalizes a URL by converting HTTP to HTTPS for iOS App Transport Security compliance
+    /// - Parameter url: The original URL (may be HTTP or HTTPS)
+    /// - Returns: The normalized URL with HTTPS scheme, or original if already HTTPS or not HTTP
+    private func normalizeSubtitleURL(_ url: URL) -> URL {
+        if url.scheme == "http" {
+            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            components?.scheme = "https"
+            if let httpsURL = components?.url {
+                print("   🔒 Converting HTTP to HTTPS for ATS compliance: \(httpsURL.absoluteString)")
+                return httpsURL
+            }
+        }
+        return url
+    }
+    
     private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) {
         print("Creating player with subtitles...")
         
@@ -673,6 +710,13 @@ open class FullScreenVideoPlayerView: UIView {
         print("   🎥 Creating player item and player...")
         self.playerItem = AVPlayerItem(asset: self.videoAsset)
         self.player = AVPlayer(playerItem: self.playerItem)
+        
+        // Disable automatic media selection to prevent native subtitle menu from appearing
+        // We use custom UILabel display, so native menu would be confusing
+        if let player = self.player {
+            player.appliesMediaSelectionCriteriaAutomatically = false
+            print("   🚫 Disabled automatic media selection (hiding native subtitle menu)")
+        }
 
         // CRITICAL: Assign player to videoPlayer BEFORE setting up subtitles
         print("   🎥 Assigning player to videoPlayer...")
@@ -690,9 +734,20 @@ open class FullScreenVideoPlayerView: UIView {
         for (index, track) in tracks.enumerated() {
             print("   📥 Processing track \(index + 1)/\(totalTracks)...")
             guard let trackUrlString = track["url"] as? String,
-                  let trackUrl = URL(string: trackUrlString),
                   let trackId = track["id"] as? String else {
                 print("      ❌ Failed to extract track info for track \(index + 1)")
+                loadedCount += 1
+                if loadedCount >= totalTracks {
+                    print("      ✅ All tracks processed (some failed), calling finishHLSSubtitleSetup()")
+                    self.finishHLSSubtitleSetup()
+                }
+                continue
+            }
+            
+            // Normalize URL (HTTP -> HTTPS for ATS compliance)
+            let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
+            guard let trackUrl = URL(string: normalizedUrlString) else {
+                print("      ❌ Failed to create URL from string: \(normalizedUrlString)")
                 loadedCount += 1
                 if loadedCount >= totalTracks {
                     print("      ✅ All tracks processed (some failed), calling finishHLSSubtitleSetup()")
@@ -854,17 +909,276 @@ open class FullScreenVideoPlayerView: UIView {
             _activeSubtitleTrackId = selectedId
         }
         
-        // Wait for player to be ready before adding subtitles
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            self.setupHLSSubtitleDisplay()
+        // Wait for player to be ready, then try composition method first (for native menu)
+        // If composition fails, fall back to custom UILabel display
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self = self, let subtitleTracks = self._subtitleTracks else { return }
             
-            // Auto-play for HLS streams with subtitles
-            self.autoPlayIfHLSReady()
+            // Try to create composition using player item tracks (available after player is ready)
+            print("🎯 Attempting to create composition with native subtitle menu support...")
+            if let playerItem = self.playerItem {
+                // Get video and audio tracks from player item
+                let playerItemVideoTracks = playerItem.tracks.compactMap { $0.assetTrack }.filter { $0.mediaType == .video }
+                let playerItemAudioTracks = playerItem.tracks.compactMap { $0.assetTrack }.filter { $0.mediaType == .audio }
+                
+                print("   Player item video tracks: \(playerItemVideoTracks.count)")
+                print("   Player item audio tracks: \(playerItemAudioTracks.count)")
+                
+                if !playerItemVideoTracks.isEmpty {
+                    // Try using player item tracks (these should be available for HLS after player is ready)
+                    if let composition = self.createCompositionWithPlayerItemTracks(
+                        videoTracks: playerItemVideoTracks,
+                        audioTracks: playerItemAudioTracks,
+                        subtitleTracks: subtitleTracks
+                    ) {
+                        print("✅ Composition created from player item tracks - native menu will be available")
+                        
+                        // Replace player item with composition
+                        let newPlayerItem = AVPlayerItem(asset: composition)
+                        newPlayerItem.textStyleRules = self.getTextStyleRules()
+                        
+                        // Replace current player item
+                        self.player?.replaceCurrentItem(with: newPlayerItem)
+                        self.playerItem = newPlayerItem
+                        
+                        // Set up native menu selection
+                        self.setInitialSubtitleSelection()
+                        self.addMediaSelectionObserver()
+                        
+                        print("✅ Native subtitle menu should now be available")
+                        self.autoPlayIfHLSReady()
+                        return
+                    } else {
+                        print("⚠️ Composition from player item tracks failed, trying direct composition...")
+                    }
+                } else {
+                    print("⚠️ No video tracks in player item yet, trying direct composition...")
+                }
+            }
+            
+            // Try direct composition method
+            if let composition = self.createCompositionWithMultipleSubtitlesForHLS(
+                videoAsset: self.videoAsset,
+                subtitleTracks: subtitleTracks
+            ) {
+                print("✅ Composition created successfully - native menu will be available")
+                
+                // Create new player item with composition
+                let newPlayerItem = AVPlayerItem(asset: composition)
+                newPlayerItem.textStyleRules = self.getTextStyleRules()
+                
+                // Replace current player item
+                self.player?.replaceCurrentItem(with: newPlayerItem)
+                self.playerItem = newPlayerItem
+                
+                // Set up native menu selection
+                self.setInitialSubtitleSelection()
+                self.addMediaSelectionObserver()
+                
+                print("✅ Native subtitle menu should now be available")
+                self.autoPlayIfHLSReady()
+            } else {
+                print("⚠️ Composition creation failed - falling back to custom UILabel display")
+                print("   Subtitles will be visible but won't appear in native iOS menu")
+                // Disable subtitle selection in player item to hide native menu
+                // Since we're using custom UILabel, the native menu would be confusing
+                if let playerItem = self.playerItem,
+                   let mediaSelectionGroup = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+                    // Deselect any subtitle option to hide the menu
+                    playerItem.select(nil, in: mediaSelectionGroup)
+                    print("   🚫 Native subtitle menu disabled (using custom UILabel display)")
+                }
+                self.setupHLSSubtitleDisplay()
+                self.autoPlayIfHLSReady()
+            }
+        }
+    }
+    
+    /// Attempts to hide the native subtitle menu button by traversing the view hierarchy
+    private func hideNativeSubtitleMenuButton() {
+        // AVPlayerViewController doesn't expose the subtitle button directly
+        // We need to traverse the view hierarchy to find and hide it
+        // Wait longer to ensure player is fully presented
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            guard let self = self else { return }
+            
+            // Ensure player view controller is presented and view is loaded
+            guard self.videoPlayer.isViewLoaded, let playerView = self.videoPlayer.view else {
+                print("   ⚠️ Player view not available yet (view not loaded)")
+                return
+            }
+            
+            // Recursively search for the subtitle button
+            // The button is typically in a toolbar or control view
+            func findAndHideSubtitleButton(in view: UIView, depth: Int = 0) -> Bool {
+                // Limit recursion depth to avoid infinite loops
+                guard depth <= 10 else {
+                    return false
+                }
+                
+                // Safety check - skip views that are being deallocated
+                // (depth == 0 means we're at the root view, which is always valid)
+                
+                // Check if this view is a button with subtitle-related text
+                if let button = view as? UIButton {
+                    let title = button.title(for: .normal) ?? ""
+                    let accessibilityLabel = button.accessibilityLabel ?? ""
+                    
+                    // Check for subtitle-related labels
+                    if title.lowercased().contains("subtitle") ||
+                       title.lowercased().contains("cc") ||
+                       title.lowercased().contains("caption") ||
+                       accessibilityLabel.lowercased().contains("subtitle") ||
+                       accessibilityLabel.lowercased().contains("cc") ||
+                       accessibilityLabel.lowercased().contains("caption") ||
+                       title == "CC" {
+                        // Only hide if button is actually visible
+                        if !button.isHidden && button.alpha > 0 {
+                            button.isHidden = true
+                            button.isEnabled = false
+                            button.alpha = 0.0
+                            print("   🚫 Found and hid native subtitle button: '\(title)' / '\(accessibilityLabel)'")
+                            return true
+                        }
+                    }
+                }
+                
+                // Check if this view has a legible content characteristic (might be the subtitle container)
+                if view.accessibilityTraits.contains(.button) {
+                    let label = view.accessibilityLabel ?? ""
+                    if label.lowercased().contains("subtitle") ||
+                       label.lowercased().contains("cc") ||
+                       label.lowercased().contains("caption") ||
+                       label == "CC" {
+                        // Only hide if view is actually visible
+                        if !view.isHidden && view.alpha > 0 {
+                            view.isHidden = true
+                            view.alpha = 0.0
+                            print("   🚫 Found and hid native subtitle accessibility element: '\(label)'")
+                            return true
+                        }
+                    }
+                }
+                
+                // Recursively search subviews (safely)
+                for subview in view.subviews {
+                    if findAndHideSubtitleButton(in: subview, depth: depth + 1) {
+                        return true
+                    }
+                }
+                
+                return false
+            }
+            
+            // Search the player view hierarchy
+            if findAndHideSubtitleButton(in: playerView) {
+                print("   ✅ Successfully hid native subtitle menu button")
+            } else {
+                print("   ⚠️ Could not find native subtitle menu button in view hierarchy")
+                print("      This is expected if the button hasn't been created yet")
+                print("      Will retry after a delay...")
+                
+                // Retry after a longer delay in case the button is created later
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                    guard let self = self, 
+                          self.videoPlayer.isViewLoaded,
+                          let playerView = self.videoPlayer.view else { 
+                        return 
+                    }
+                    if findAndHideSubtitleButton(in: playerView) {
+                        print("   ✅ Successfully hid native subtitle menu button (retry)")
+                    } else {
+                        print("   ⚠️ Native subtitle button still not found after retry")
+                        print("      The menu may still be visible, but selections are blocked")
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Helper method to deselect native subtitle tracks and log details
+    private func deselectNativeSubtitles(playerItem: AVPlayerItem, mediaSelectionGroup: AVMediaSelectionGroup) {
+        print("   🔍 Analyzing native subtitle tracks...")
+        print("   📋 Available native subtitle options: \(mediaSelectionGroup.options.count)")
+        for (idx, option) in mediaSelectionGroup.options.enumerated() {
+            print("      [\(idx)] displayName='\(option.displayName)'")
+            print("          extendedLanguageTag='\(option.extendedLanguageTag ?? "nil")'")
+            print("          locale='\(option.locale?.identifier ?? "nil")'")
+            print("          mediaType='\(option.mediaType.rawValue)'")
+            print("          hasMediaCharacteristic(.legible)=\(option.hasMediaCharacteristic(.legible))")
+        }
+        
+        // Check current selection
+        if let currentSelection = playerItem.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup) {
+            print("   ⚠️ Current subtitle selection: \(currentSelection.displayName)")
+            print("      This is why native subtitles are being displayed!")
+        } else {
+            print("   ✅ No subtitle currently selected")
+        }
+        
+        // Deselect any selected subtitle option
+        playerItem.select(nil, in: mediaSelectionGroup)
+        print("   🚫 Deselected all native subtitle tracks (using custom UILabel)")
+        
+        // Verify deselection
+        if let stillSelected = playerItem.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup) {
+            print("   ❌ WARNING: Subtitle still selected after deselection: \(stillSelected.displayName)")
+        } else {
+            print("   ✅ Verified: No subtitle selected")
         }
     }
     
     private func setupHLSSubtitleDisplay() {
+        // Actively deselect any native subtitle tracks and prevent them from being selected
+        // This must be done after player item is ready and we need to keep them deselected
+        if let playerItem = self.playerItem {
+            // Set up observer to immediately deselect any subtitle tracks that get selected
+            // This prevents native subtitles from appearing even if user clicks the menu
+            let observer = playerItem.observe(\.currentMediaSelection, options: [.new]) { [weak self] item, _ in
+                guard let self = self else { return }
+                if let mediaSelectionGroup = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible),
+                   let selectedOption = item.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup) {
+                    // Immediately deselect any subtitle that gets selected
+                    item.select(nil, in: mediaSelectionGroup)
+                    print("   🚫 Blocked native subtitle selection: \(selectedOption.displayName)")
+                }
+            }
+            // Store observer to keep it alive
+            self.mediaSelectionObserver = observer
+            
+            // Wait a bit for player item to fully load its tracks, then deselect
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self = self, let playerItem = self.playerItem else { return }
+                
+                // Deselect any legible (subtitle) tracks
+                // Check both asset and playerItem for media selection groups
+                var mediaSelectionGroup: AVMediaSelectionGroup?
+                
+                // First try playerItem asset
+                mediaSelectionGroup = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible)
+                
+                // If not found, wait for asset to load and try again
+                if mediaSelectionGroup == nil {
+                    print("   ⏳ Media selection group not ready yet, waiting for asset to load...")
+                    playerItem.asset.loadValuesAsynchronously(forKeys: ["availableMediaCharacteristicsWithMediaSelectionOptions"]) {
+                        DispatchQueue.main.async {
+                            if let group = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+                                mediaSelectionGroup = group
+                                self.deselectNativeSubtitles(playerItem: playerItem, mediaSelectionGroup: group)
+                            } else {
+                                print("   ℹ️ No legible media selection group found after loading")
+                            }
+                        }
+                    }
+                } else {
+                    self.deselectNativeSubtitles(playerItem: playerItem, mediaSelectionGroup: mediaSelectionGroup!)
+                    // Also try to hide the native subtitle menu button in the UI
+                    // TEMPORARILY DISABLED - testing if this causes player not to show
+                    // self.hideNativeSubtitleMenuButton()
+                }
+            }
+        }
+        
         // Create subtitle label that shows/hides based on timing
         let label = UILabel()
         label.textColor = UIColor.white
@@ -891,7 +1205,24 @@ open class FullScreenVideoPlayerView: UIView {
         self.subtitleLabel = label
         
         // Add to the video player's content overlay view with delay to ensure proper layout
-        if let contentOverlayView = self.videoPlayer.contentOverlayView {
+        // CRITICAL: Wait for player view to be loaded before accessing contentOverlayView
+        func addSubtitleLabelToView() {
+            guard self.videoPlayer.isViewLoaded else {
+                print("⚠️ Player view not loaded yet, retrying in 0.2s...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    addSubtitleLabelToView()
+                }
+                return
+            }
+            
+            guard let contentOverlayView = self.videoPlayer.contentOverlayView else {
+                print("⚠️ Content overlay view is nil, retrying in 0.2s...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    addSubtitleLabelToView()
+                }
+                return
+            }
+            
             contentOverlayView.addSubview(label)
             label.translatesAutoresizingMaskIntoConstraints = false
             
@@ -905,12 +1236,13 @@ open class FullScreenVideoPlayerView: UIView {
                     label.trailingAnchor.constraint(lessThanOrEqualTo: contentOverlayView.trailingAnchor, constant: -20),
                     label.widthAnchor.constraint(lessThanOrEqualTo: contentOverlayView.widthAnchor, constant: -40)
                 ])
-                print("Added subtitle label constraints after layout")
+                print("✅ Added subtitle label constraints after layout")
             }
-            print("Added subtitle label to content overlay view")
-        } else {
-            print("Content overlay view is nil!")
+            print("✅ Added subtitle label to content overlay view")
         }
+        
+        // Start the retry mechanism
+        addSubtitleLabelToView()
         
         // Store current subtitle to avoid unnecessary updates
         var currentDisplayedSubtitle: String? = nil
@@ -1251,7 +1583,9 @@ open class FullScreenVideoPlayerView: UIView {
             // Resolve URL
             var trackUrl: URL?
             if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                trackUrl = URL(string: trackUrlString)
+                // Normalize URL (HTTP -> HTTPS for ATS compliance)
+                let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
+                trackUrl = URL(string: normalizedUrlString)
             } else if trackUrlString.hasPrefix("file://") {
                 trackUrl = URL(string: trackUrlString)
             } else {
@@ -1412,7 +1746,9 @@ open class FullScreenVideoPlayerView: UIView {
             // Resolve subtitle URL using same logic as video URL resolution
             var trackUrl: URL?
             if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                trackUrl = URL(string: trackUrlString)
+                // Normalize URL (HTTP -> HTTPS for ATS compliance)
+                let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
+                trackUrl = URL(string: normalizedUrlString)
             } else if trackUrlString.hasPrefix("public/assets") {
                 if let appFolder = Bundle.main.resourceURL {
                     trackUrl = appFolder.appendingPathComponent(trackUrlString)
@@ -1448,13 +1784,28 @@ open class FullScreenVideoPlayerView: UIView {
                 }
             } else if subtitleUrl.pathExtension.lowercased() == "vtt" {
                 // Ensure VTT file has language metadata
+                // For remote URLs, we need to download first, add LANGUAGE header, then cache locally
                 print("   🔍 Ensuring VTT has language metadata for track: \(trackId)")
-                if let vttUrl = self.ensureVTTLanguageMetadata(vttURL: subtitleUrl, language: language) {
-                    finalUrl = vttUrl
-                    print("   ✅ VTT language metadata ensured: \(vttUrl.absoluteString)")
+                if subtitleUrl.isFileURL {
+                    // Local file - can directly modify
+                    if let vttUrl = self.ensureVTTLanguageMetadata(vttURL: subtitleUrl, language: language) {
+                        finalUrl = vttUrl
+                        print("   ✅ VTT language metadata ensured (local): \(vttUrl.absoluteString)")
+                    } else {
+                        finalUrl = subtitleUrl
+                        print("   ⚠️ Could not add language metadata to local VTT, using original")
+                    }
                 } else {
-                    finalUrl = subtitleUrl
-                    print("   ⚠️ Could not add language metadata, using original VTT")
+                    // Remote URL - need to download, add LANGUAGE header, cache locally
+                    print("   🌐 Remote VTT URL detected - will download and add LANGUAGE header")
+                    if let cachedVttUrl = self.downloadAndEnsureVTTLanguageMetadata(remoteURL: subtitleUrl, language: language, trackId: trackId) {
+                        finalUrl = cachedVttUrl
+                        print("   ✅ VTT downloaded, LANGUAGE header added, cached: \(cachedVttUrl.absoluteString)")
+                    } else {
+                        finalUrl = subtitleUrl
+                        print("   ⚠️ Could not download/add language metadata, using original remote URL")
+                        print("   ⚠️ This will cause 'CC' to show in native menu instead of language name")
+                    }
                 }
             } else {
                 finalUrl = subtitleUrl
@@ -1514,6 +1865,18 @@ open class FullScreenVideoPlayerView: UIView {
                     continue
                 } else {
                     print("   ✅ Subtitle file exists at path: \(subtitleInfo.asset.url.path)")
+                    // Check VTT file content for LANGUAGE header
+                    if let content = try? String(contentsOf: subtitleInfo.asset.url, encoding: .utf8) {
+                        if content.contains("LANGUAGE:") {
+                            let langLine = content.components(separatedBy: .newlines).first(where: { $0.contains("LANGUAGE:") })
+                            print("   📋 VTT file has LANGUAGE header: \(langLine ?? "not found")")
+                            print("   Expected language from array: \(subtitleInfo.language)")
+                        } else {
+                            print("   ⚠️ VTT file missing LANGUAGE header!")
+                            print("   Expected: LANGUAGE: \(subtitleInfo.language)")
+                            print("   This will cause 'CC' to show in native menu instead of language name")
+                        }
+                    }
                 }
             } else {
                 print("   🌐 Subtitle is remote URL, will download")
@@ -1605,6 +1968,12 @@ open class FullScreenVideoPlayerView: UIView {
                 } else {
                     for (idx, track) in availableTracks.enumerated() {
                         print("         Track \(idx): language=\(track.languageCode ?? "nil"), extendedLang=\(track.extendedLanguageTag ?? "nil")")
+                        print("            hasMediaCharacteristic(.legible): \(track.hasMediaCharacteristic(.legible))")
+                        print("            Expected language from array: \(subtitleInfo.language)")
+                        if track.languageCode == nil && track.extendedLanguageTag == nil {
+                            print("            ⚠️ NO LANGUAGE METADATA - This will cause 'CC' to show in native menu!")
+                            print("            💡 VTT file needs 'LANGUAGE: \(subtitleInfo.language)' header")
+                        }
                     }
                 }
             }
@@ -1662,10 +2031,26 @@ open class FullScreenVideoPlayerView: UIView {
                 let sourceTrack = subtitleAssetTracks[0]
                 if sourceTrack.languageCode == nil || sourceTrack.extendedLanguageTag == nil {
                     print("⚠️ Source subtitle track has no language metadata for: \(subtitleInfo.trackId)")
+                    print("   Language from array: \(subtitleInfo.language)")
                     print("   This may cause issues with track identification in media selection")
+                    print("   ⚠️ VTT file may not have LANGUAGE header, or AVFoundation didn't extract it")
+                    print("   💡 Ensure VTT file has 'LANGUAGE: \(subtitleInfo.language)' header")
                 } else {
-                    print("   Source track language: \(sourceTrack.extendedLanguageTag ?? "nil")")
+                    print("   ✅ Source track language: \(sourceTrack.extendedLanguageTag ?? "nil")")
+                    print("   Language from array: \(subtitleInfo.language)")
+                    // Verify language matches
+                    if let trackLang = sourceTrack.extendedLanguageTag, 
+                       !trackLang.contains(subtitleInfo.language) && 
+                       !subtitleInfo.language.contains(trackLang) {
+                        print("   ⚠️ Language mismatch: track has '\(trackLang)' but array has '\(subtitleInfo.language)'")
+                    }
                 }
+                
+                // Log track metadata for debugging
+                print("   📋 Track metadata:")
+                print("      languageCode: \(sourceTrack.languageCode ?? "nil")")
+                print("      extendedLanguageTag: \(sourceTrack.extendedLanguageTag ?? "nil")")
+                print("      hasMediaCharacteristic(.legible): \(sourceTrack.hasMediaCharacteristic(.legible))")
                 
                 addedTracksCount += 1
                 print("✅ Successfully added subtitle track: \(subtitleInfo.trackId) (\(subtitleInfo.language))")
@@ -1775,7 +2160,9 @@ open class FullScreenVideoPlayerView: UIView {
             // Resolve URL (same logic as createCompositionWithMultipleSubtitlesForHLS)
             var trackUrl: URL?
             if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                trackUrl = URL(string: trackUrlString)
+                // Normalize URL (HTTP -> HTTPS for ATS compliance)
+                let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
+                trackUrl = URL(string: normalizedUrlString)
             } else if trackUrlString.hasPrefix("file://") {
                 trackUrl = URL(string: trackUrlString)
             } else {
@@ -1948,7 +2335,13 @@ open class FullScreenVideoPlayerView: UIView {
                 // Resolve subtitle URL using same logic as video URL resolution
                 var trackUrl: URL?
                 if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                    trackUrl = URL(string: trackUrlString)
+                    // Convert HTTP to HTTPS for iOS App Transport Security compliance
+                    var urlString = trackUrlString
+                    if urlString.hasPrefix("http://") {
+                        urlString = urlString.replacingOccurrences(of: "http://", with: "https://")
+                        print("   🔒 Converting HTTP to HTTPS for ATS compliance: \(urlString)")
+                    }
+                    trackUrl = URL(string: urlString)
                 } else if trackUrlString.hasPrefix("public/assets") {
                     if let appFolder = Bundle.main.resourceURL {
                         trackUrl = appFolder.appendingPathComponent(trackUrlString)
@@ -2309,7 +2702,9 @@ open class FullScreenVideoPlayerView: UIView {
             // Resolve URL
             var trackUrl: URL?
             if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                trackUrl = URL(string: trackUrlString)
+                // Normalize URL (HTTP -> HTTPS for ATS compliance)
+                let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
+                trackUrl = URL(string: normalizedUrlString)
             } else if trackUrlString.hasPrefix("public/assets") {
                 if let appFolder = Bundle.main.resourceURL {
                     trackUrl = appFolder.appendingPathComponent(trackUrlString)
@@ -2640,6 +3035,162 @@ open class FullScreenVideoPlayerView: UIView {
             return newVttURL
         } catch {
             print("Failed to add language metadata to VTT: \(error)")
+            return nil
+        }
+    }
+    
+    /// Downloads a remote VTT file, adds LANGUAGE header, and caches it locally
+    /// Format: WEBVTT\nLANGUAGE: <iso-639-1-code>\n\n<content>
+    /// CRITICAL: Must have blank line after LANGUAGE header for proper WebVTT format
+    private func downloadAndEnsureVTTLanguageMetadata(remoteURL: URL, language: String, trackId: String) -> URL? {
+        // Normalize URL (HTTP -> HTTPS for ATS compliance)
+        let finalURL = self.normalizeSubtitleURL(remoteURL)
+        
+        print("   📥 Downloading remote VTT file: \(finalURL.absoluteString)")
+        
+        // Use semaphore to make this synchronous (we're already in async context)
+        let semaphore = DispatchSemaphore(value: 0)
+        var downloadedData: Data?
+        var downloadError: Error?
+        
+        // Use video headers for authentication (same as video)
+        let headersToUse = self._videoHeaders ?? self._stHeaders
+        
+        // Create custom URLSession with delegate to handle redirects with auth headers
+        let sessionDelegate = SubtitleURLSessionDelegate(headers: headersToUse ?? [:])
+        let sessionConfig = URLSessionConfiguration.default
+        sessionConfig.timeoutIntervalForRequest = 10.0
+        sessionConfig.timeoutIntervalForResource = 10.0
+        let session = URLSession(configuration: sessionConfig, delegate: sessionDelegate, delegateQueue: nil)
+        
+        var request = URLRequest(url: finalURL)
+        if let headers = headersToUse {
+            for (key, value) in headers {
+                request.setValue(value, forHTTPHeaderField: key)
+            }
+            print("   🔐 Added \(headers.count) authentication headers")
+        }
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                downloadError = error
+                print("   ❌ Download error: \(error.localizedDescription)")
+            } else if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                    if let data = data {
+                        downloadedData = data
+                        print("   ✅ Downloaded \(data.count) bytes (HTTP \(httpResponse.statusCode))")
+                    } else {
+                        downloadError = NSError(domain: "SubtitleDownload", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])
+                    }
+                } else {
+                    downloadError = NSError(domain: "SubtitleDownload", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "HTTP \(httpResponse.statusCode)"])
+                    print("   ❌ HTTP error: \(httpResponse.statusCode)")
+                }
+            } else if let data = data {
+                downloadedData = data
+                print("   ✅ Downloaded \(data.count) bytes")
+            } else {
+                downloadError = NSError(domain: "SubtitleDownload", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"])
+            }
+            semaphore.signal()
+        }
+        
+        task.resume()
+        
+        // Wait for download (max 10 seconds)
+        let timeout = semaphore.wait(timeout: .now() + 10.0)
+        if timeout == .timedOut {
+            print("   ❌ Download timeout after 10 seconds")
+            return nil
+        }
+        
+        guard let data = downloadedData else {
+            print("   ❌ Download failed: \(downloadError?.localizedDescription ?? "unknown error")")
+            return nil
+        }
+        
+        // Decode content
+        guard let vttContent = String(data: data, encoding: .utf8) else {
+            print("   ❌ Failed to decode VTT content as UTF-8")
+            return nil
+        }
+        
+        print("   📄 VTT content length: \(vttContent.count) characters")
+        print("   📋 First 200 chars: \(String(vttContent.prefix(200)))")
+        
+        // Check if already has LANGUAGE header
+        if vttContent.contains("LANGUAGE:") {
+            print("   ℹ️ VTT already has LANGUAGE header, using as-is")
+            // Still cache it locally for consistency
+        } else {
+            print("   ➕ Adding LANGUAGE header: LANGUAGE: \(language)")
+        }
+        
+        // Add LANGUAGE header if missing
+        // WebVTT format requires: WEBVTT\nLANGUAGE: <code>\n\n<cues>
+        let lines = vttContent.components(separatedBy: .newlines)
+        var newLines: [String] = []
+        var foundWebVTT = false
+        var hasLanguage = false
+        var webvttIndex: Int?
+        
+        for (index, line) in lines.enumerated() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            
+            if trimmed == "WEBVTT" && !foundWebVTT {
+                foundWebVTT = true
+                webvttIndex = index
+                newLines.append(line)
+            } else if trimmed.hasPrefix("LANGUAGE:") {
+                hasLanguage = true
+                newLines.append(line)
+            } else {
+                newLines.append(line)
+            }
+        }
+        
+        // If WEBVTT not found, prepend it with LANGUAGE and blank line
+        if !foundWebVTT {
+            newLines.insert("WEBVTT", at: 0)
+            newLines.insert("LANGUAGE: \(language)", at: 1)
+            newLines.insert("", at: 2) // Blank line required by WebVTT spec
+        } else if !hasLanguage {
+            // WEBVTT found but no LANGUAGE - insert after WEBVTT with blank line
+            if let index = webvttIndex {
+                newLines.insert("LANGUAGE: \(language)", at: index + 1)
+                // Check if next line is already blank, if not insert one
+                if index + 2 < newLines.count && !newLines[index + 2].trimmingCharacters(in: .whitespaces).isEmpty {
+                    newLines.insert("", at: index + 2)
+                }
+            }
+        }
+        
+        // Write to cache
+        guard let cachesURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            print("   ❌ Failed to get caches directory")
+            return nil
+        }
+        
+        let newVttFileName = "\(trackId)_\(language).vtt"
+        let newVttURL = cachesURL.appendingPathComponent(newVttFileName)
+        
+        let newContent = newLines.joined(separator: "\n")
+        do {
+            try newContent.write(to: newVttURL, atomically: true, encoding: .utf8)
+            print("   ✅ Cached VTT with LANGUAGE header: \(newVttURL.path)")
+            print("   📋 First 150 chars of cached file: \(String(newContent.prefix(150)))")
+            print("   🔍 Verifying LANGUAGE header format...")
+            
+            // Verify the format is correct
+            let firstLines = newContent.components(separatedBy: .newlines).prefix(5)
+            for (idx, line) in firstLines.enumerated() {
+                print("      Line \(idx): '\(line)'")
+            }
+            
+            return newVttURL
+        } catch {
+            print("   ❌ Failed to write cached VTT: \(error)")
             return nil
         }
     }
