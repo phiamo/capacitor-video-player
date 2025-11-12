@@ -222,7 +222,8 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
             // Legacy single subtitle for backward compatibility
             var subTitlePath: String = ""
             var subTitleLanguage: String = ""
-            if !subtitleTracks.isEmpty, let firstTrack = subtitleTracks[0] as? [String: Any] {
+            if !subtitleTracks.isEmpty {
+                let firstTrack = subtitleTracks[0]
                 subTitlePath = firstTrack["url"] as? String ?? ""
                 subTitleLanguage = firstTrack["language"] as? String ?? ""
             }
@@ -736,7 +737,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         
         if self.mode == "fullscreen" && self.fsPlayerId == playerId {
             if let playerView = self.videoPlayerFullScreenView {
-                DispatchQueue.main.async { [weak self] in
+                DispatchQueue.main.async {
                     // Pause the video if it's playing
                     if playerView.isPlaying {
                         playerView.pause()
