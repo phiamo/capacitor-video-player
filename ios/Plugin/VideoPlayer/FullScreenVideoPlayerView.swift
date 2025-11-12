@@ -294,11 +294,107 @@ open class FullScreenVideoPlayerView: UIView {
         // Wait for player to be ready before adding subtitles
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self else { return }
+            // Setup subtitle display for HLS
             self.setupHLSSubtitleDisplay()
             
             // Auto-play for HLS streams with subtitles
             self.autoPlayIfHLSReady()
         }
+    }
+    
+    private func setupHLSSubtitleDisplay() {
+        // Create subtitle label that shows/hides based on timing
+        let label = UILabel()
+        label.textColor = UIColor.white
+        label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        label.textAlignment = .center
+        label.font = UIFont.systemFont(ofSize: 16)
+        label.numberOfLines = 0
+        label.isHidden = true
+        label.alpha = 0.0
+        
+        // Apply styling from options if available
+        if let options = _stOptions {
+            if let fontSize = options["fontSize"] as? CGFloat {
+                label.font = UIFont.systemFont(ofSize: fontSize)
+            }
+            if let fgColor = options["foregroundColor"] as? String {
+                label.textColor = parseRGBA(fgColor) ?? UIColor.white
+            }
+            if let bgColor = options["backgroundColor"] as? String {
+                label.backgroundColor = parseRGBA(bgColor)?.withAlphaComponent(0.7) ?? UIColor.black.withAlphaComponent(0.7)
+            }
+        }
+        
+        self.subtitleLabel = label
+        
+        // Add to the video player's content overlay view
+        if let contentOverlayView = self.videoPlayer.contentOverlayView {
+            contentOverlayView.addSubview(label)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                NSLayoutConstraint.activate([
+                    label.centerXAnchor.constraint(equalTo: contentOverlayView.centerXAnchor),
+                    label.bottomAnchor.constraint(equalTo: contentOverlayView.bottomAnchor, constant: -50),
+                    label.leadingAnchor.constraint(greaterThanOrEqualTo: contentOverlayView.leadingAnchor, constant: 20),
+                    label.trailingAnchor.constraint(lessThanOrEqualTo: contentOverlayView.trailingAnchor, constant: -20),
+                    label.widthAnchor.constraint(lessThanOrEqualTo: contentOverlayView.widthAnchor, constant: -40)
+                ])
+            }
+        }
+        
+        // Store current subtitle to avoid unnecessary updates
+        var currentDisplayedSubtitle: String? = nil
+        
+        // Set up subtitle timing with player time observer
+        let timeObserver = self.player?.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 1, timescale: 1), queue: .main) { [weak self] time in
+            guard let self = self, let label = self.subtitleLabel else { return }
+            
+            let currentTime = time.seconds
+            
+            // Find subtitle from active track
+            var currentSubtitle: (start: Double, end: Double, text: String)? = nil
+            if let activeTrackId = self._activeSubtitleTrackId,
+               let subtitles = self.subtitleTracksData[activeTrackId] {
+                currentSubtitle = self.findSubtitleForTime(currentTime, subtitles: subtitles)
+            }
+            
+            // Only update if subtitle text has changed
+            let newText = currentSubtitle?.text ?? ""
+            if newText != currentDisplayedSubtitle {
+                label.text = newText
+                currentDisplayedSubtitle = newText
+                
+                if !newText.isEmpty {
+                    label.isHidden = false
+                    label.alpha = 1.0
+                } else {
+                    label.isHidden = true
+                }
+            }
+        }
+        
+        // Store the observer for cleanup later
+        self.subtitleTimeObserver = timeObserver
+    }
+    
+    private func parseRGBA(_ rgba: String) -> UIColor? {
+        // Parse RGBA string in format "rgba(r, g, b, a)" or "rgb(r, g, b)"
+        if let oPar = rgba.firstIndex(of: "(") {
+            if let cPar = rgba.firstIndex(of: ")") {
+                let strColor = rgba[rgba.index(after: oPar)..<cPar]
+                let array = strColor.components(separatedBy: ",")
+                if array.count >= 3 {
+                    let r = (array[0].trimmingCharacters(in: .whitespaces) as NSString).floatValue / 255.0
+                    let g = (array[1].trimmingCharacters(in: .whitespaces) as NSString).floatValue / 255.0
+                    let b = (array[2].trimmingCharacters(in: .whitespaces) as NSString).floatValue / 255.0
+                    let a = array.count >= 4 ? (array[3].trimmingCharacters(in: .whitespaces) as NSString).floatValue : 1.0
+                    return UIColor(red: CGFloat(r), green: CGFloat(g), blue: CGFloat(b), alpha: CGFloat(a))
+                }
+            }
+        }
+        return nil
     }
     
     private func setupSubtitlesForHLS(subTitleUrl: URL) {
@@ -786,7 +882,7 @@ open class FullScreenVideoPlayerView: UIView {
             Thread.sleep(forTimeInterval: 0.1)
             
             // Configure for video playback to prevent HAL errors
-            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetooth, .mixWithOthers])
+            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetoothHFP, .mixWithOthers])
             
             // Set preferred sample rate to reduce processing load
             try audioSession.setPreferredSampleRate(44100.0)
@@ -1409,7 +1505,7 @@ open class FullScreenVideoPlayerView: UIView {
         guard let tracks = _subtitleTracks else { return nil }
         var result: [[String: Any]] = []
         for track in tracks {
-            var trackInfo: [String: Any] = [
+            let trackInfo: [String: Any] = [
                 "id": track["id"] as? String ?? "",
                 "language": track["language"] as? String ?? "",
                 "label": track["label"] as? String ?? track["language"] as? String ?? "",
@@ -1446,7 +1542,7 @@ open class FullScreenVideoPlayerView: UIView {
                 }
                 if let option = options.first {
                     playerItem.select(option, in: mediaSelectionGroup)
-                } else if let tracks = _subtitleTracks {
+                } else if _subtitleTracks != nil {
                     // If no matching option, try to create composition with selected track
                     // This would require re-creating the player item with the selected track
                     // For now, just log a warning
