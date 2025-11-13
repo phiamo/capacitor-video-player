@@ -14,6 +14,9 @@ import AVPlayerViewControllerSubtitles
 // swiftlint:disable file_length
 // swiftlint:disable type_body_length
 open class FullScreenVideoPlayerView: UIView {
+    // TEMPORARY: Flag to disable all subtitle functionality for testing
+    private let SUBTITLES_DISABLED = false
+    
     private var _url: URL
     private var _isReadyToPlay: Bool = false
     private var _videoId: String = "fullscreen"
@@ -116,6 +119,7 @@ open class FullScreenVideoPlayerView: UIView {
     var periodicTimeObserver: Any?
     var subtitleTimeObserver: Any?
     var mediaSelectionObserver: NSKeyValueObservation?
+    var ccButtonHideTimer: Timer?
 
     init(url: URL, rate: Float, playerId: String, exitOnEnd: Bool,
          loopOnEnd: Bool, pipEnabled: Bool, showControls: Bool,
@@ -206,7 +210,7 @@ open class FullScreenVideoPlayerView: UIView {
       print("🔍 ========================================")
       
       // Handle multiple subtitle tracks or single subtitle
-      if let tracks = _subtitleTracks, !tracks.isEmpty {
+      if !SUBTITLES_DISABLED, let tracks = _subtitleTracks, !tracks.isEmpty {
           // New API: multiple subtitle tracks
           let isHLS = self.isHLSStream(url: self._url)
           print("   ✅ Multiple subtitle tracks detected: \(tracks.count) tracks")
@@ -243,7 +247,7 @@ open class FullScreenVideoPlayerView: UIView {
                   }
               }
           }
-      } else if let subTitleUrl = self._stUrl {
+      } else if !SUBTITLES_DISABLED, let subTitleUrl = self._stUrl {
           // Backward compatibility: single subtitle
           // For HLS streams, we need to load the asset asynchronously
           print("Loading HLS stream: \(self._url)")
@@ -281,10 +285,22 @@ open class FullScreenVideoPlayerView: UIView {
               }
           }
       } else {
-          // No subtitles, use simple player
+          // No subtitles (or subtitles disabled), use simple player
+          print("   🎥 Setting up player without subtitles...")
           self.playerItem = AVPlayerItem(asset: self.videoAsset)
           self.player = AVPlayer(playerItem: self.playerItem)
           self.setupPlayer()
+      }
+      
+      // If subtitles are disabled, ensure player is set up
+      if SUBTITLES_DISABLED {
+          print("   🚫 Subtitles are DISABLED (temporary flag)")
+          if self.player == nil {
+              print("   🎥 Setting up player (subtitles disabled)...")
+              self.playerItem = AVPlayerItem(asset: self.videoAsset)
+              self.player = AVPlayer(playerItem: self.playerItem)
+              self.setupPlayer()
+          }
       }
   }
     
@@ -680,6 +696,12 @@ open class FullScreenVideoPlayerView: UIView {
     // MARK: - Multiple Subtitle Tracks Support
     
     private func loadAllSubtitleTracksForHLS() {
+        // TEMPORARY: Skip all subtitle loading if disabled
+        if SUBTITLES_DISABLED {
+            print("🚫 Subtitles DISABLED - skipping loadAllSubtitleTracksForHLS()")
+            return
+        }
+        
         print("🎬 ========================================")
         print("🎬 loadAllSubtitleTracksForHLS() CALLED")
         print("🎬 ========================================")
@@ -904,6 +926,12 @@ open class FullScreenVideoPlayerView: UIView {
     }
     
     private func finishHLSSubtitleSetup() {
+        // TEMPORARY: Skip all subtitle setup if disabled
+        if SUBTITLES_DISABLED {
+            print("🚫 Subtitles DISABLED - skipping finishHLSSubtitleSetup()")
+            return
+        }
+        
         // Set initial active track
         if let selectedId = _selectedSubtitleId ?? _subtitleTracks?.first?["id"] as? String {
             _activeSubtitleTrackId = selectedId
@@ -994,106 +1022,134 @@ open class FullScreenVideoPlayerView: UIView {
         }
     }
     
+    /// Starts a timer that continuously tries to hide the CC button
+    /// This is necessary because the button may be recreated by AVPlayerViewController
+    private func startHidingCCButton() {
+        // Stop any existing timer
+        self.ccButtonHideTimer?.invalidate()
+        self.ccButtonHideTimer = nil
+        
+        // Start a timer that runs every 0.5 seconds to hide the CC button
+        self.ccButtonHideTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.hideNativeSubtitleMenuButton()
+        }
+        
+        // Also try immediately
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.hideNativeSubtitleMenuButton()
+        }
+    }
+    
+    /// Stops the CC button hiding timer (call when player is dismissed)
+    private func stopHidingCCButton() {
+        self.ccButtonHideTimer?.invalidate()
+        self.ccButtonHideTimer = nil
+    }
+    
     /// Attempts to hide the native subtitle menu button by traversing the view hierarchy
     private func hideNativeSubtitleMenuButton() {
-        // AVPlayerViewController doesn't expose the subtitle button directly
-        // We need to traverse the view hierarchy to find and hide it
-        // Wait longer to ensure player is fully presented
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            guard let self = self else { return }
-            
-            // Ensure player view controller is presented and view is loaded
-            guard self.videoPlayer.isViewLoaded, let playerView = self.videoPlayer.view else {
-                print("   ⚠️ Player view not available yet (view not loaded)")
-                return
+        // Ensure player view controller is presented and view is loaded
+        guard self.videoPlayer.isViewLoaded, let playerView = self.videoPlayer.view else {
+            // View not loaded yet - this is OK, will retry
+            return
+        }
+        
+        // First, try to dismiss any open subtitle menu/popover
+        // The menu might be a UIPopoverPresentationController or similar
+        if let presentedVC = self.videoPlayer.presentedViewController {
+            // Check if it's the subtitle menu
+            if presentedVC.title?.lowercased().contains("subtitle") == true ||
+               presentedVC.title?.lowercased().contains("caption") == true {
+                print("   🚫 Dismissing open subtitle menu...")
+                presentedVC.dismiss(animated: false, completion: nil)
             }
-            
-            // Recursively search for the subtitle button
-            // The button is typically in a toolbar or control view
-            func findAndHideSubtitleButton(in view: UIView, depth: Int = 0) -> Bool {
-                // Limit recursion depth to avoid infinite loops
-                guard depth <= 10 else {
-                    return false
-                }
-                
-                // Safety check - skip views that are being deallocated
-                // (depth == 0 means we're at the root view, which is always valid)
-                
-                // Check if this view is a button with subtitle-related text
-                if let button = view as? UIButton {
-                    let title = button.title(for: .normal) ?? ""
-                    let accessibilityLabel = button.accessibilityLabel ?? ""
-                    
-                    // Check for subtitle-related labels
-                    if title.lowercased().contains("subtitle") ||
-                       title.lowercased().contains("cc") ||
-                       title.lowercased().contains("caption") ||
-                       accessibilityLabel.lowercased().contains("subtitle") ||
-                       accessibilityLabel.lowercased().contains("cc") ||
-                       accessibilityLabel.lowercased().contains("caption") ||
-                       title == "CC" {
-                        // Only hide if button is actually visible
-                        if !button.isHidden && button.alpha > 0 {
-                            button.isHidden = true
-                            button.isEnabled = false
-                            button.alpha = 0.0
-                            print("   🚫 Found and hid native subtitle button: '\(title)' / '\(accessibilityLabel)'")
-                            return true
-                        }
-                    }
-                }
-                
-                // Check if this view has a legible content characteristic (might be the subtitle container)
-                if view.accessibilityTraits.contains(.button) {
-                    let label = view.accessibilityLabel ?? ""
-                    if label.lowercased().contains("subtitle") ||
-                       label.lowercased().contains("cc") ||
-                       label.lowercased().contains("caption") ||
-                       label == "CC" {
-                        // Only hide if view is actually visible
-                        if !view.isHidden && view.alpha > 0 {
-                            view.isHidden = true
-                            view.alpha = 0.0
-                            print("   🚫 Found and hid native subtitle accessibility element: '\(label)'")
-                            return true
-                        }
-                    }
-                }
-                
-                // Recursively search subviews (safely)
-                for subview in view.subviews {
-                    if findAndHideSubtitleButton(in: subview, depth: depth + 1) {
-                        return true
-                    }
-                }
-                
+        }
+        
+        // Also check for popover presentation controllers
+        if let popover = self.videoPlayer.popoverPresentationController {
+            print("   🚫 Dismissing popover...")
+            popover.delegate = nil
+        }
+        
+        // Recursively search for the subtitle button and menu
+        func findAndHideSubtitleElements(in view: UIView, depth: Int = 0) -> Bool {
+            // Limit recursion depth to avoid infinite loops
+            guard depth <= 15 else {
                 return false
             }
             
-            // Search the player view hierarchy
-            if findAndHideSubtitleButton(in: playerView) {
-                print("   ✅ Successfully hid native subtitle menu button")
-            } else {
-                print("   ⚠️ Could not find native subtitle menu button in view hierarchy")
-                print("      This is expected if the button hasn't been created yet")
-                print("      Will retry after a delay...")
+            var found = false
+            
+            // Check if this view is a button with subtitle-related text
+            if let button = view as? UIButton {
+                let title = button.title(for: .normal) ?? ""
+                let accessibilityLabel = button.accessibilityLabel ?? ""
                 
-                // Retry after a longer delay in case the button is created later
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                    guard let self = self, 
-                          self.videoPlayer.isViewLoaded,
-                          let playerView = self.videoPlayer.view else { 
-                        return 
-                    }
-                    if findAndHideSubtitleButton(in: playerView) {
-                        print("   ✅ Successfully hid native subtitle menu button (retry)")
-                    } else {
-                        print("   ⚠️ Native subtitle button still not found after retry")
-                        print("      The menu may still be visible, but selections are blocked")
+                // Check for subtitle-related labels
+                if title.lowercased().contains("subtitle") ||
+                   title.lowercased().contains("cc") ||
+                   title.lowercased().contains("caption") ||
+                   accessibilityLabel.lowercased().contains("subtitle") ||
+                   accessibilityLabel.lowercased().contains("cc") ||
+                   accessibilityLabel.lowercased().contains("caption") ||
+                   title == "CC" {
+                    // Only hide if button is actually visible
+                    if !button.isHidden && button.alpha > 0 {
+                        button.isHidden = true
+                        button.isEnabled = false
+                        button.alpha = 0.0
+                        print("   🚫 Found and hid native subtitle button: '\(title)' / '\(accessibilityLabel)'")
+                        found = true
                     }
                 }
             }
+            
+            // Check if this is a menu/popover view (might be a UITableView or similar)
+            if let tableView = view as? UITableView {
+                // Check if it contains subtitle-related content
+                if tableView.accessibilityLabel?.lowercased().contains("subtitle") == true ||
+                   tableView.accessibilityLabel?.lowercased().contains("caption") == true {
+                    // Try to hide the entire menu
+                    view.isHidden = true
+                    view.alpha = 0.0
+                    print("   🚫 Found and hid subtitle menu table view")
+                    found = true
+                }
+            }
+            
+            // Check if this view has a legible content characteristic (might be the subtitle container)
+            if view.accessibilityTraits.contains(.button) {
+                let label = view.accessibilityLabel ?? ""
+                if label.lowercased().contains("subtitle") ||
+                   label.lowercased().contains("cc") ||
+                   label.lowercased().contains("caption") ||
+                   label == "CC" {
+                    // Only hide if view is actually visible
+                    if !view.isHidden && view.alpha > 0 {
+                        view.isHidden = true
+                        view.alpha = 0.0
+                        print("   🚫 Found and hid native subtitle accessibility element: '\(label)'")
+                        found = true
+                    }
+                }
+            }
+            
+            // Recursively search subviews (safely)
+            for subview in view.subviews {
+                if findAndHideSubtitleElements(in: subview, depth: depth + 1) {
+                    found = true
+                }
+            }
+            
+            return found
         }
+        
+        // Search the player view hierarchy
+        if findAndHideSubtitleElements(in: playerView) {
+            // Found and hid elements - timer will keep checking
+        }
+        // If not found, timer will retry on next interval
     }
     
     /// Helper method to deselect native subtitle tracks and log details
@@ -1145,6 +1201,10 @@ open class FullScreenVideoPlayerView: UIView {
             }
             // Store observer to keep it alive
             self.mediaSelectionObserver = observer
+            
+            // CRITICAL: Also hide the CC button by continuously checking and hiding it
+            // The button may appear after view loads or be recreated, so we need to keep hiding it
+            self.startHidingCCButton()
             
             // Wait a bit for player item to fully load its tracks, then deselect
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -3520,6 +3580,9 @@ open class FullScreenVideoPlayerView: UIView {
 
     func removeObservers() {
         print("🧹 Cleaning up observers...")
+        
+        // Stop CC button hiding timer
+        self.stopHidingCCButton()
         
         // Remove KVO observers
         self.itemStatusObserver?.invalidate()
