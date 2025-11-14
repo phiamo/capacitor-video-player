@@ -42,9 +42,6 @@ open class FullScreenVideoPlayerView: UIView {
     private var _subtitleTracks: [[String: Any]]?
     private var _selectedSubtitleId: String?
     private var _activeSubtitleTrackId: String?
-    // Store parsed subtitle data for custom display (fallback when composition fails)
-    private var subtitleTracksData: [String: [(start: Double, end: Double, text: String)]] = [:]
-    private var subtitleLabel: UILabel?
     private var subtitleRetryInProgress: Bool = false // Prevent duplicate retry mechanisms
     
     // Custom URLSession delegate to handle redirects with authentication
@@ -117,7 +114,6 @@ open class FullScreenVideoPlayerView: UIView {
     var videoPlayerFrameObserver: NSKeyValueObservation?
     var videoPlayerMoveObserver: NSKeyValueObservation?
     var periodicTimeObserver: Any?
-    var subtitleTimeObserver: Any?
     var mediaSelectionObserver: NSKeyValueObservation?
     var ccButtonHideTimer: Timer?
 
@@ -209,376 +205,269 @@ open class FullScreenVideoPlayerView: UIView {
       print("   Single subtitle URL: \(_stUrl?.absoluteString ?? "nil")")
       print("🔍 ========================================")
       
-      // Handle multiple subtitle tracks or single subtitle
-      if !SUBTITLES_DISABLED, let tracks = _subtitleTracks, !tracks.isEmpty {
-          // New API: multiple subtitle tracks
-          let isHLS = self.isHLSStream(url: self._url)
-          print("   ✅ Multiple subtitle tracks detected: \(tracks.count) tracks")
-          print("   📹 Is HLS stream: \(isHLS)")
-          
-          if isHLS {
-              print("   🎬 HLS stream with multiple subtitle tracks detected")
-              print("   🎥 Setting up player immediately (subtitles will load asynchronously)...")
-              // CRITICAL: Set up player immediately so it can be presented
-              // Subtitles will be loaded asynchronously via loadAllSubtitleTracksForHLS()
-              self.playerItem = AVPlayerItem(asset: self.videoAsset)
-              self.player = AVPlayer(playerItem: self.playerItem)
-              self.setupPlayer()
-              
-              // Now load subtitle tracks asynchronously
-              print("   🎬 Calling loadAllSubtitleTracksForHLS()...")
-              self.loadAllSubtitleTracksForHLS()
-          } else {
-              // Non-HLS: Load tracks first, then create composition
-              self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) { [weak self] in
-                  guard let self = self else { return }
-                  DispatchQueue.main.async {
-                      let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
-                      guard !videoTracks.isEmpty else {
-                          self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                          self.player = AVPlayer(playerItem: self.playerItem)
-                          self.setupPlayer()
-                          return
-                      }
-                      self.createPlayerWithSubtitles(
-                          videoTracks: videoTracks,
-                          subtitleTracks: tracks
-                      )
-                  }
-              }
-          }
-      } else if !SUBTITLES_DISABLED, let subTitleUrl = self._stUrl {
-          // Backward compatibility: single subtitle
-          // For HLS streams, we need to load the asset asynchronously
-          print("Loading HLS stream: \(self._url)")
-          
-          // Load the asset asynchronously first
-          self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) {
-              DispatchQueue.main.async {
-                  print("HLS stream loaded. Tracks count: \(self.videoAsset.tracks.count)")
-                  
-                  // For HLS streams, tracks might not be immediately available
-                  // Check if this is an HLS stream by URL extension or content type
-                  let isHLSStream = self.isHLSStream(url: self._url)
-                  
-                  if isHLSStream {
-                      print("HLS stream detected - proceeding with player setup")
-                      print("HLS stream URL: \(self._url.absoluteString)")
-                      print("HLS stream tracks available: \(self.videoAsset.tracks.count)")
-                      // For HLS streams, proceed with player setup even if tracks aren't immediately available
-                      // The tracks will be loaded when the player item becomes ready
-                      self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
-                  } else {
-                      // For non-HLS streams, check for video tracks
-                  let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
-                  guard !videoTracks.isEmpty else {
-                          print("No video tracks found in non-HLS stream - using simple player")
-                      self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                      self.player = AVPlayer(playerItem: self.playerItem)
-                      self.setupPlayer()
-                      return
-                  }
-                  
-                  // Continue with subtitle logic only after HLS is loaded
-                  self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
-                  }
-              }
-          }
-      } else {
-          // No subtitles (or subtitles disabled), use simple player
-          print("   🎥 Setting up player without subtitles...")
-          self.playerItem = AVPlayerItem(asset: self.videoAsset)
-          self.player = AVPlayer(playerItem: self.playerItem)
-          self.setupPlayer()
-      }
+      // Simplified approach: Always create player with video asset, then add subtitles using library
+      // Following the library example: https://github.com/mhergon/AVPlayerViewController-Subtitles
+      print("   🎥 Setting up player with video asset...")
+      self.playerItem = AVPlayerItem(asset: self.videoAsset)
+      self.player = AVPlayer(playerItem: self.playerItem)
       
-      // If subtitles are disabled, ensure player is set up
-      if SUBTITLES_DISABLED {
-          print("   🚫 Subtitles are DISABLED (temporary flag)")
-          if self.player == nil {
-              print("   🎥 Setting up player (subtitles disabled)...")
-              self.playerItem = AVPlayerItem(asset: self.videoAsset)
-              self.player = AVPlayer(playerItem: self.playerItem)
-              self.setupPlayer()
+      // CRITICAL: Assign player to videoPlayer BEFORE setting up subtitles
+      self.videoPlayer.player = self.player
+      self.setupPlayer()
+      
+      // Add subtitles if available (using library, no composition needed)
+      if !SUBTITLES_DISABLED {
+          if let tracks = _subtitleTracks, !tracks.isEmpty {
+              // Multiple subtitle tracks
+              print("   ✅ Multiple subtitle tracks detected: \(tracks.count) tracks")
+              self.setupMultipleSubtitlesWithAVPlayerViewControllerSubtitles(subtitleTracks: tracks)
+          } else if let subTitleUrl = self._stUrl {
+              // Single subtitle
+              print("   ✅ Single subtitle detected")
+              DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                  self?.addSubtitlesToPlayer(subTitleUrl: subTitleUrl)
+              }
           }
       }
   }
     
-    private func loadVideoAssetWithSubtitles(subTitleUrl: URL) {
-        print("Loading video asset with subtitles...")
-        
-        // Check if this is an HLS stream
-        let isHLSStream = self.isHLSStream(url: self._url)
-        
-        if isHLSStream {
-            print("HLS stream detected - setting up player with subtitles")
-            print("HLS URL: \(self._url.absoluteString)")
-            // For HLS streams, set up subtitles first, then create player
-            self.setupSubtitlesForHLS(subTitleUrl: subTitleUrl)
-        } else {
-            // For non-HLS streams, load tracks asynchronously
-        self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) { [weak self] in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                print("Video asset loaded. Tracks count: \(self.videoAsset.tracks.count)")
-                print("Video asset duration: \(self.videoAsset.duration)")
-                
-                let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
-                print("Video tracks count: \(videoTracks.count)")
-                
-                if videoTracks.isEmpty {
-                    print("No video tracks found after loading - falling back to simple player")
-                    self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                    self.player = AVPlayer(playerItem: self.playerItem)
-                    self.setupPlayer()
-                    return
-                }
-                
-                // Now proceed with subtitle composition
-                self.createPlayerWithSubtitles(subTitleUrl: subTitleUrl, videoTracks: videoTracks)
-                }
-            }
-        }
-    }
-    
-    private func setupSubtitlesForHLS(subTitleUrl: URL) {
-        print("Setting up subtitles for HLS stream using AVPlayerViewController-Subtitles...")
-        
-        // Create player item with the original HLS asset
-        self.playerItem = AVPlayerItem(asset: self.videoAsset)
-        self.player = AVPlayer(playerItem: self.playerItem)
-        
-        // CRITICAL: Assign player to videoPlayer BEFORE setting up subtitles
-        self.videoPlayer.player = self.player
-        
-        // Set up the player first
-        self.setupPlayer()
-        
-        // Wait for player to be ready before adding subtitles
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            self.addSubtitlesToPlayer(subTitleUrl: subTitleUrl)
-            
-            // Auto-play for HLS streams with subtitles
-            self.autoPlayIfHLSReady()
-        }
-    }
     
     private func addSubtitlesToPlayer(subTitleUrl: URL) {
-        print("Setting up custom subtitle display...")
+        print("Setting up subtitles using AVPlayerViewController-Subtitles...")
         
-        // Read and parse subtitle content
-        do {
-            let subtitleContent = try String(contentsOf: subTitleUrl, encoding: .utf8)
-            let isVTT = subtitleContent.hasPrefix("WEBVTT")
-            print("Subtitle format detected: \(isVTT ? "VTT" : "SRT")")
-            
-            // Parse subtitles based on format
-            let subtitles: [(start: Double, end: Double, text: String)]
-            if isVTT {
-                subtitles = parseVTTContent(subtitleContent)
-            } else {
-                subtitles = parseSRTContent(subtitleContent)
+        // Ensure player is assigned before adding subtitles
+        guard self.videoPlayer.player != nil else {
+            print("⚠️ Player not ready, retrying...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                self?.addSubtitlesToPlayer(subTitleUrl: subTitleUrl)
             }
-            
-            print("Parsed \(subtitles.count) subtitle entries")
-            
-            // Create subtitle label that shows/hides based on timing
-            let subtitleLabel = UILabel()
-            subtitleLabel.textColor = UIColor.white
-            subtitleLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-            subtitleLabel.textAlignment = .center
-            subtitleLabel.font = UIFont.systemFont(ofSize: 16)
-            subtitleLabel.numberOfLines = 0
-            subtitleLabel.isHidden = true  // Start hidden
-            subtitleLabel.alpha = 0.0       // Start transparent
-            
-            // Add to the video player's content overlay view with delay to ensure proper layout
-            if let contentOverlayView = self.videoPlayer.contentOverlayView {
-                contentOverlayView.addSubview(subtitleLabel)
-                subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-                
-                // Wait for the view to have proper dimensions before setting constraints
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    // Use more flexible constraints to avoid conflicts
-                    NSLayoutConstraint.activate([
-                        subtitleLabel.centerXAnchor.constraint(equalTo: contentOverlayView.centerXAnchor),
-                        subtitleLabel.bottomAnchor.constraint(equalTo: contentOverlayView.bottomAnchor, constant: -50),
-                        subtitleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: contentOverlayView.leadingAnchor, constant: 20),
-                        subtitleLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentOverlayView.trailingAnchor, constant: -20),
-                        subtitleLabel.widthAnchor.constraint(lessThanOrEqualTo: contentOverlayView.widthAnchor, constant: -40)
-                    ])
-                    print("Added subtitle label constraints after layout")
+            return
+        }
+        
+        // Handle VTT files - library primarily supports SRT, but may support VTT
+        // Try direct first, library should handle both formats
+        let subtitleURL = subTitleUrl
+        
+        // Add subtitles using library
+        // Library API: addSubtitles() sets up the label, then open() loads the file
+        self.videoPlayer.addSubtitles()
+        
+        if subtitleURL.scheme == "http" || subtitleURL.scheme == "https" {
+            // For remote URLs, download with custom headers and save to temp file, then use open()
+            self.downloadSubtitleWithHeaders(url: subtitleURL) { [weak self] tempFileURL in
+                guard let self = self, let fileURL = tempFileURL else {
+                    print("❌ Failed to download subtitle or get temp file URL")
+                    return
                 }
-                print("Added subtitle label to content overlay view")
-            } else {
-                print("Content overlay view is nil!")
-            }
-            
-            // Store current subtitle to avoid unnecessary updates
-            var currentDisplayedSubtitle: String? = nil
-            
-            // Set up subtitle timing with player time observer (reduced frequency to prevent overload)
-            let timeObserver = self.player?.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 1, timescale: 1), queue: .main) { [weak self] time in
-                guard let self = self else { return }
-                
-                let currentTime = time.seconds
-                let currentSubtitle = self.findSubtitleForTime(currentTime, subtitles: subtitles)
-                
-                // Only update if subtitle text has changed
-                let newText = currentSubtitle?.text ?? ""
-                if newText != currentDisplayedSubtitle {
-                    subtitleLabel.text = newText
-                    currentDisplayedSubtitle = newText
-                    
-                    if !newText.isEmpty {
-                        // Show subtitle instantly
-                        subtitleLabel.isHidden = false
-                        subtitleLabel.alpha = 1.0
-                        print("Subtitle: \(newText)")
-                    } else {
-                        // Hide subtitle instantly
-                        subtitleLabel.isHidden = true
-                        print("Subtitle cleared")
+                print("✅ Got temp file URL: \(fileURL.path)")
+                DispatchQueue.main.async {
+                    do {
+                        print("📂 Opening subtitle file from local path: \(fileURL.path)")
+                        
+                        // Check if it's a VTT file - library only supports SRT, so we need to convert or parse VTT ourselves
+                        let isVTT = fileURL.pathExtension.lowercased() == "vtt"
+                        
+                        if isVTT {
+                            // For VTT files, read content and convert to SRT format or parse directly
+                            print("📝 Detected VTT file - converting to SRT format for library")
+                            let vttContent = try String(contentsOf: fileURL, encoding: .utf8)
+                            let srtContent = self.convertVTTToSRT(vttContent: vttContent)
+                            
+                            // Use show() method directly with converted SRT content
+                            self.videoPlayer.show(subtitles: srtContent)
+                            print("✅ Successfully converted and displayed VTT subtitle")
+                        } else {
+                            // For SRT files, use library's open method
+                            try self.videoPlayer.open(fileFromLocal: fileURL, encoding: .utf8)
+                            print("✅ Successfully opened SRT subtitle file using open(fileFromLocal:)")
+                        }
+                        
+                        self.applySubtitleStyling()
+                        print("✅ Applied subtitle styling")
+                        // Clean up temp file after a delay (give library time to read it)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                            do {
+                                try FileManager.default.removeItem(at: fileURL)
+                                print("🧹 Cleaned up temp subtitle file")
+                            } catch {
+                                print("⚠️ Failed to clean up temp file: \(error)")
+                            }
+                        }
+                    } catch {
+                        print("❌ Failed to open downloaded subtitle file: \(error)")
+                        print("   File exists: \(FileManager.default.fileExists(atPath: fileURL.path))")
+                        // Clean up temp file on error
+                        try? FileManager.default.removeItem(at: fileURL)
                     }
                 }
             }
+        } else {
+            // For local files, check format and handle accordingly
+            print("📂 Opening local subtitle file: \(subtitleURL.path)")
+            let isVTT = subtitleURL.pathExtension.lowercased() == "vtt"
             
-            // Store the observer for cleanup later
-            self.subtitleTimeObserver = timeObserver
-            
-        } catch {
-            print("Failed to read subtitle file: \(error)")
+            do {
+                if isVTT {
+                    // For VTT files, read and convert to SRT
+                    print("📝 Detected VTT file - converting to SRT format for library")
+                    let vttContent = try String(contentsOf: subtitleURL, encoding: .utf8)
+                    let srtContent = self.convertVTTToSRT(vttContent: vttContent)
+                    self.videoPlayer.show(subtitles: srtContent)
+                    print("✅ Successfully converted and displayed VTT subtitle")
+                } else {
+                    // For SRT files, use library's open method
+                    try self.videoPlayer.open(fileFromLocal: subtitleURL, encoding: .utf8)
+                    print("✅ Successfully opened SRT subtitle file")
+                }
+                self.applySubtitleStyling()
+            } catch {
+                print("❌ Failed to add subtitles: \(error)")
+            }
         }
     }
     
-    private func parseSRTContent(_ content: String) -> [(start: Double, end: Double, text: String)] {
-        var subtitles: [(start: Double, end: Double, text: String)] = []
+    /// Apply subtitle styling from options
+    private func applySubtitleStyling() {
+        guard let options = self._stOptions else { return }
         
-        let lines = content.components(separatedBy: .newlines)
+        if let fontSize = options["fontSize"] as? CGFloat {
+            self.videoPlayer.subtitleLabel?.font = UIFont.systemFont(ofSize: fontSize)
+        }
+        if let fgColor = options["foregroundColor"] as? String,
+           let color = self.parseRGBA(fgColor) {
+            self.videoPlayer.subtitleLabel?.textColor = color
+        }
+        if let bgColor = options["backgroundColor"] as? String,
+           let color = self.parseRGBA(bgColor) {
+            self.videoPlayer.subtitleLabel?.backgroundColor = color.withAlphaComponent(0.7)
+        }
+    }
+    
+    /// Convert VTT (WebVTT) format to SRT format for the library
+    /// The library only supports SRT format, so we need to convert VTT
+    private func convertVTTToSRT(vttContent: String) -> String {
+        var srtContent = ""
+        var lines = vttContent.components(separatedBy: .newlines)
+        var index = 1
         var i = 0
         
+        // Skip WEBVTT header and any metadata
         while i < lines.count {
             let line = lines[i].trimmingCharacters(in: .whitespaces)
             
-            // Skip empty lines and sequence numbers
-            if line.isEmpty || Int(line) != nil {
+            // Skip empty lines, WEBVTT header, and metadata
+            if line.isEmpty || line.hasPrefix("WEBVTT") || line.hasPrefix("NOTE") || line.contains("-->") == false {
                 i += 1
                 continue
             }
             
-            // Check if this is a timestamp line
+            // Look for time line (format: 00:00:00.000 --> 00:00:05.000)
             if line.contains("-->") {
-                let timeParts = line.components(separatedBy: " --> ")
-                if timeParts.count == 2 {
-                    let startTime = parseTimeString(timeParts[0])
-                    let endTime = parseTimeString(timeParts[1])
-                    
-                    // Get the subtitle text (next non-empty lines)
-                    var subtitleText = ""
-                    i += 1
-                    while i < lines.count && !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
-                        if !subtitleText.isEmpty {
-                            subtitleText += "\n"
-                        }
-                        subtitleText += lines[i].trimmingCharacters(in: .whitespaces)
+                // Convert VTT time format to SRT format
+                // VTT: 00:00:00.000 --> 00:00:05.000
+                // SRT: 00:00:00,000 --> 00:00:05,000 (comma instead of dot for milliseconds)
+                var timeLine = line.replacingOccurrences(of: ".", with: ",", options: [], range: nil)
+                
+                // Add index
+                srtContent += "\(index)\n"
+                srtContent += "\(timeLine)\n"
+                index += 1
+                
+                // Collect subtitle text until next time line or empty line
+                i += 1
+                var textLines: [String] = []
+                while i < lines.count {
+                    let nextLine = lines[i].trimmingCharacters(in: .whitespaces)
+                    if nextLine.isEmpty {
                         i += 1
+                        break
                     }
-                    
-                    if !subtitleText.isEmpty {
-                        subtitles.append((start: startTime, end: endTime, text: subtitleText))
+                    if nextLine.contains("-->") {
+                        // Next time line found, don't consume it
+                        break
                     }
+                    textLines.append(nextLine)
+                    i += 1
+                }
+                
+                // Add text (remove HTML tags if present)
+                let text = textLines.joined(separator: " ").replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                srtContent += "\(text)\n\n"
+            } else {
+                i += 1
+            }
+        }
+        
+        return srtContent
+    }
+    
+    /// Download subtitle file with custom headers and save to temporary file, then return file URL
+    private func downloadSubtitleWithHeaders(url: URL, completion: @escaping (URL?) -> Void) {
+        print("Downloading subtitle with custom headers: \(url.absoluteString)")
+        
+        // Get headers to use (subtitle headers or video headers as fallback)
+        let headersToUse = self._stHeaders ?? self._videoHeaders
+        
+        // Create URLSession with delegate to handle redirects with auth headers
+        let delegate = SubtitleURLSessionDelegate(headers: headersToUse ?? [:])
+        let sessionConfig = URLSessionConfiguration.default
+        sessionConfig.timeoutIntervalForRequest = 10.0
+        sessionConfig.timeoutIntervalForResource = 30.0
+        let session = URLSession(configuration: sessionConfig, delegate: delegate, delegateQueue: nil)
+        
+        var request = URLRequest(url: url)
+        
+        // Add headers if available
+        if let headers = headersToUse {
+            for (key, value) in headers {
+                request.setValue(value, forHTTPHeaderField: key)
+            }
+            print("   Added \(headers.count) authentication headers")
+        } else {
+            print("   ⚠️ No headers available for subtitle download")
+        }
+        
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("   ❌ Subtitle download error: \(error.localizedDescription)")
+                completion(nil)
+                return
+            }
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if httpResponse.statusCode != 200 {
+                    print("   ❌ Subtitle download failed with status: \(httpResponse.statusCode)")
+                    completion(nil)
+                    return
                 }
             }
-            i += 1
-        }
-        
-        return subtitles
-    }
-    
-    private func parseVTTContent(_ content: String) -> [(start: Double, end: Double, text: String)] {
-        var subtitles: [(start: Double, end: Double, text: String)] = []
-        
-        let lines = content.components(separatedBy: .newlines)
-        var i = 0
-        
-        // Skip WEBVTT header
-        while i < lines.count && !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
-            if lines[i].trimmingCharacters(in: .whitespaces).hasPrefix("WEBVTT") {
-                i += 1
-                break
-            }
-            i += 1
-        }
-        
-        while i < lines.count {
-            let line = lines[i].trimmingCharacters(in: .whitespaces)
             
-            // Skip empty lines
-            if line.isEmpty {
-                i += 1
-                continue
+            guard let data = data else {
+                print("   ❌ Failed to get subtitle data")
+                completion(nil)
+                return
             }
             
-            // Check if this is a timestamp line (VTT format: 00:00:00.000 --> 00:00:20.000)
-            if line.contains("-->") {
-                let timeParts = line.components(separatedBy: " --> ")
-                if timeParts.count == 2 {
-                    let startTime = parseVTTTimeString(timeParts[0])
-                    let endTime = parseVTTTimeString(timeParts[1])
-                    
-                    // Get the subtitle text (next non-empty lines)
-                    var subtitleText = ""
-                    i += 1
-                    while i < lines.count && !lines[i].trimmingCharacters(in: .whitespaces).isEmpty {
-                        if !subtitleText.isEmpty {
-                            subtitleText += "\n"
-                        }
-                        subtitleText += lines[i].trimmingCharacters(in: .whitespaces)
-                        i += 1
-                    }
-                    
-                    if !subtitleText.isEmpty {
-                        subtitles.append((start: startTime, end: endTime, text: subtitleText))
-                    }
-                }
+            // Determine file extension from URL or content
+            let fileExtension = url.pathExtension.isEmpty ? "srt" : url.pathExtension
+            
+            // Create temporary file
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempFileURL = tempDir.appendingPathComponent(UUID().uuidString).appendingPathExtension(fileExtension)
+            
+            do {
+                try data.write(to: tempFileURL)
+                print("   ✅ Subtitle downloaded and saved to temp file: \(tempFileURL.path)")
+                completion(tempFileURL)
+            } catch {
+                print("   ❌ Failed to save subtitle to temp file: \(error)")
+                completion(nil)
             }
-            i += 1
         }
         
-        return subtitles
+        task.resume()
     }
     
-    private func parseVTTTimeString(_ timeString: String) -> Double {
-        // VTT format: 00:00:00.000 or 00:00:00,000
-        let cleanTime = timeString.replacingOccurrences(of: ",", with: ".")
-        let components = cleanTime.components(separatedBy: ":")
-        if components.count == 3 {
-            let hours = Double(components[0]) ?? 0
-            let minutes = Double(components[1]) ?? 0
-            let seconds = Double(components[2]) ?? 0
-            return hours * 3600 + minutes * 60 + seconds
-        }
-        return 0
-    }
-    
-    private func parseTimeString(_ timeString: String) -> Double {
-        let components = timeString.components(separatedBy: ":")
-        if components.count == 3 {
-            let hours = Double(components[0]) ?? 0
-            let minutes = Double(components[1]) ?? 0
-            let seconds = Double(components[2]) ?? 0
-            return hours * 3600 + minutes * 60 + seconds
-        }
-        return 0
-    }
-    
-    private func findSubtitleForTime(_ time: Double, subtitles: [(start: Double, end: Double, text: String)]) -> (start: Double, end: Double, text: String)? {
-        return subtitles.first { subtitle in
-            time >= subtitle.start && time <= subtitle.end
-        }
-    }
     
     private func isHLSStream(url: URL) -> Bool {
         let urlString = url.absoluteString.lowercased()
@@ -613,414 +502,6 @@ open class FullScreenVideoPlayerView: UIView {
         return url
     }
     
-    private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) {
-        print("Creating player with subtitles...")
-        
-        var textStyle: [AVTextStyleRule] = []
-        if let opt = self._stOptions {
-            textStyle.append(contentsOf: self.setSubTitleStyle(options: opt))
-        }
-
-        let subTitleAsset = AVAsset(url: subTitleUrl)
-        print("Subtitle asset duration: \(subTitleAsset.duration)")
-        let composition = AVMutableComposition()
-
-        if let videoTrack = composition.addMutableTrack(
-            withMediaType: AVMediaType.video,
-            preferredTrackID: Int32(kCMPersistentTrackID_Invalid)) {
-            
-            // Check if video has audio tracks
-            let audioTracks = self.videoAsset.tracks(withMediaType: AVMediaType.audio)
-            let audioTrack = composition.addMutableTrack(
-                withMediaType: AVMediaType.audio,
-                preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
-            
-            do {
-                try videoTrack.insertTimeRange(
-                    CMTimeRangeMake(start: CMTime.zero,
-                                    duration: self.videoAsset.duration),
-                    of: videoTracks[0],
-                    at: CMTime.zero)
-                
-                // Add audio track if it exists
-                if !audioTracks.isEmpty, let audioTrack = audioTrack {
-                    try audioTrack.insertTimeRange(CMTimeRangeMake(
-                                                    start: CMTime.zero,
-                                                    duration: self.videoAsset.duration),
-                                                   of: audioTracks[0], at: CMTime.zero)
-                }
-                
-                // Check if subtitle asset has text tracks
-                let subtitleTracks = subTitleAsset.tracks(withMediaType: .text)
-                if !subtitleTracks.isEmpty {
-                    if let subtitleTrack = composition.addMutableTrack(
-                        withMediaType: .text,
-                        preferredTrackID: kCMPersistentTrackID_Invalid) {
-                        do {
-                            let duration = self.videoAsset.duration
-                            try subtitleTrack.insertTimeRange(
-                                CMTimeRangeMake(start: CMTime.zero,
-                                                duration: duration),
-                                of: subtitleTracks[0],
-                                at: CMTime.zero)
-
-                            self.playerItem = AVPlayerItem(asset: composition)
-                            self.playerItem?.textStyleRules = textStyle
-                            print("Successfully added subtitle track")
-
-                        } catch {
-                            print("Failed to insert subtitle track: \(error)")
-                            self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                        }
-                    } else {
-                        print("Failed to create subtitle track")
-                        self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                    }
-                } else {
-                    print("No subtitle tracks found in subtitle asset")
-                    self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                }
-            } catch {
-                print("Failed to insert video/audio tracks: \(error)")
-                self.playerItem = AVPlayerItem(asset: self.videoAsset)
-            }
-        } else {
-            print("Failed to create video track")
-            self.playerItem = AVPlayerItem(asset: self.videoAsset)
-        }
-        
-        self.player = AVPlayer(playerItem: self.playerItem)
-        self.setupPlayer()
-    }
-    
-    // MARK: - Multiple Subtitle Tracks Support
-    
-    private func loadAllSubtitleTracksForHLS() {
-        // TEMPORARY: Skip all subtitle loading if disabled
-        if SUBTITLES_DISABLED {
-            print("🚫 Subtitles DISABLED - skipping loadAllSubtitleTracksForHLS()")
-            return
-        }
-        
-        print("🎬 ========================================")
-        print("🎬 loadAllSubtitleTracksForHLS() CALLED")
-        print("🎬 ========================================")
-        print("   Checking subtitle tracks...")
-        print("   _subtitleTracks is nil: \(_subtitleTracks == nil)")
-        print("   _subtitleTracks count: \(_subtitleTracks?.count ?? 0)")
-
-        guard let tracks = _subtitleTracks, !tracks.isEmpty else {
-            print("   ❌ Guard failed - no subtitle tracks available")
-            print("      _subtitleTracks: \(_subtitleTracks?.description ?? "nil")")
-            print("🎬 ========================================")
-            return
-        }
-
-        print("   ✅ Guard passed - \(tracks.count) subtitle tracks found")
-        print("   📋 Track details:")
-        for (index, track) in tracks.enumerated() {
-            if let trackId = track["id"] as? String,
-               let trackUrl = track["url"] as? String,
-               let trackLang = track["language"] as? String {
-                print("      Track \(index + 1): \(trackId) (\(trackLang))")
-                print("         URL: \(trackUrl)")
-            }
-        }
-        print("🎬 ========================================")
-
-        // Create player item with the original HLS asset
-        print("   🎥 Creating player item and player...")
-        self.playerItem = AVPlayerItem(asset: self.videoAsset)
-        self.player = AVPlayer(playerItem: self.playerItem)
-        
-        // Disable automatic media selection to prevent native subtitle menu from appearing
-        // We use custom UILabel display, so native menu would be confusing
-        if let player = self.player {
-            player.appliesMediaSelectionCriteriaAutomatically = false
-            print("   🚫 Disabled automatic media selection (hiding native subtitle menu)")
-        }
-
-        // CRITICAL: Assign player to videoPlayer BEFORE setting up subtitles
-        print("   🎥 Assigning player to videoPlayer...")
-        self.videoPlayer.player = self.player
-
-        // Set up the player first
-        print("   🎥 Setting up player...")
-        self.setupPlayer()
-
-        // Load all subtitle tracks asynchronously
-        print("   📥 Starting to load \(tracks.count) subtitle tracks...")
-        var loadedCount = 0
-        let totalTracks = tracks.count
-
-        for (index, track) in tracks.enumerated() {
-            print("   📥 Processing track \(index + 1)/\(totalTracks)...")
-            guard let trackUrlString = track["url"] as? String,
-                  let trackId = track["id"] as? String else {
-                print("      ❌ Failed to extract track info for track \(index + 1)")
-                loadedCount += 1
-                if loadedCount >= totalTracks {
-                    print("      ✅ All tracks processed (some failed), calling finishHLSSubtitleSetup()")
-                    self.finishHLSSubtitleSetup()
-                }
-                continue
-            }
-            
-            // Normalize URL (HTTP -> HTTPS for ATS compliance)
-            let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
-            guard let trackUrl = URL(string: normalizedUrlString) else {
-                print("      ❌ Failed to create URL from string: \(normalizedUrlString)")
-                loadedCount += 1
-                if loadedCount >= totalTracks {
-                    print("      ✅ All tracks processed (some failed), calling finishHLSSubtitleSetup()")
-                    self.finishHLSSubtitleSetup()
-                }
-                continue
-            }
-
-            print("      ✅ Track \(index + 1) info extracted: id=\(trackId), url=\(trackUrl.absoluteString)")
-
-            // Load subtitle file with proper headers for authentication
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else {
-                    print("      ❌ Self is nil in async block for track \(trackId)")
-                    return
-                }
-
-                print("      🌐 Starting HTTP request for track \(trackId)...")
-
-                // Use URLSession with delegate to handle redirects and preserve headers
-                // URLSession.shared doesn't preserve custom headers through redirects
-                var request = URLRequest(url: trackUrl)
-                var headersToUse: [String: String] = [:]
-
-                // Add headers if they were provided for the video
-                // Use video headers (same headers used for video authentication)
-                if let headers = self._videoHeaders {
-                    headersToUse = headers
-                    for (key, value) in headers {
-                        request.setValue(value, forHTTPHeaderField: key)
-                    }
-                    print("      ✅ Added \(headers.count) authentication headers from video")
-                    for (key, _) in headers {
-                        let maskedValue = (key.lowercased().contains("token") || key.lowercased().contains("auth")) 
-                            ? "***" 
-                            : headers[key] ?? ""
-                        print("         Header: \(key) = \(maskedValue)")
-                    }
-                } else {
-                    print("      ⚠️ No video headers available for subtitle authentication")
-                }
-
-                // Create URLSession with delegate to preserve headers through redirects
-                let delegate = SubtitleURLSessionDelegate(headers: headersToUse)
-                let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-                print("      📡 Making HTTP request to: \(trackUrl.absoluteString)")
-                let task = session.dataTask(with: request) { [weak self] data, response, error in
-                    print("      📥 HTTP response received for track \(trackId)")
-                    guard let self = self else { return }
-
-                    if let error = error {
-                        print("      ❌ HTTP Error for track \(trackId): \(error.localizedDescription)")
-                        if let urlError = error as? URLError {
-                            print("         Error code: \(urlError.code.rawValue)")
-                            print("         Error domain: \(urlError.localizedDescription)")
-                        }
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-
-                    guard let data = data else {
-                        print("      ❌ No data received for track \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-
-                    print("      ✅ Received \(data.count) bytes for track \(trackId)")
-
-                    guard let subtitleContent = String(data: data, encoding: .utf8) else {
-                        print("      ❌ Failed to decode subtitle content as UTF-8 for track \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-
-                    print("      ✅ Decoded subtitle content (\(subtitleContent.count) characters) for track \(trackId)")
-                    
-                    // Log first 200 characters to diagnose content
-                    let preview = String(subtitleContent.prefix(200))
-                    print("      📄 Content preview (first 200 chars): \(preview)")
-
-                    // Check if we got an error response (like 401)
-                    if subtitleContent.contains("\"status\":401") || subtitleContent.contains("Unauthorized") {
-                        print("      ⚠️ Authentication failed (401) for track \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-                    
-                    // Check for other error responses
-                    if subtitleContent.contains("\"status\":") || subtitleContent.contains("\"error\":") {
-                        print("      ⚠️ Error response detected in content for track \(trackId)")
-                        print("      📄 Full error content: \(subtitleContent)")
-                    }
-
-                    let isVTT = subtitleContent.hasPrefix("WEBVTT")
-                    print("      🔍 Detected format: \(isVTT ? "WebVTT" : "SRT") for track \(trackId)")
-                    let subtitles: [(start: Double, end: Double, text: String)]
-                    if isVTT {
-                        subtitles = self.parseVTTContent(subtitleContent)
-                    } else {
-                        subtitles = self.parseSRTContent(subtitleContent)
-                    }
-
-                    print("      ✅ Parsed \(subtitles.count) subtitle entries for track \(trackId)")
-
-                    DispatchQueue.main.async {
-                        self.subtitleTracksData[trackId] = subtitles
-                        loadedCount += 1
-                        print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                        if loadedCount >= totalTracks {
-                            print("      ✅ All tracks loaded successfully, calling finishHLSSubtitleSetup()")
-                            self.finishHLSSubtitleSetup()
-                        }
-                    }
-                }
-
-                task.resume()
-                print("      🚀 HTTP task resumed for track \(trackId)")
-            }
-        }
-        print("   ✅ Finished setting up subtitle loading loop for all \(totalTracks) tracks")
-    }
-    
-    private func finishHLSSubtitleSetup() {
-        // TEMPORARY: Skip all subtitle setup if disabled
-        if SUBTITLES_DISABLED {
-            print("🚫 Subtitles DISABLED - skipping finishHLSSubtitleSetup()")
-            return
-        }
-        
-        // Set initial active track
-        if let selectedId = _selectedSubtitleId ?? _subtitleTracks?.first?["id"] as? String {
-            _activeSubtitleTrackId = selectedId
-        }
-        
-        // Wait for player to be ready, then try composition method first (for native menu)
-        // If composition fails, fall back to custom UILabel display
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self = self, let subtitleTracks = self._subtitleTracks else { return }
-            
-            // Try to create composition using player item tracks (available after player is ready)
-            print("🎯 Attempting to create composition with native subtitle menu support...")
-            if let playerItem = self.playerItem {
-                // Get video and audio tracks from player item
-                let playerItemVideoTracks = playerItem.tracks.compactMap { $0.assetTrack }.filter { $0.mediaType == .video }
-                let playerItemAudioTracks = playerItem.tracks.compactMap { $0.assetTrack }.filter { $0.mediaType == .audio }
-                
-                print("   Player item video tracks: \(playerItemVideoTracks.count)")
-                print("   Player item audio tracks: \(playerItemAudioTracks.count)")
-                
-                if !playerItemVideoTracks.isEmpty {
-                    // Try using player item tracks (these should be available for HLS after player is ready)
-                    if let composition = self.createCompositionWithPlayerItemTracks(
-                        videoTracks: playerItemVideoTracks,
-                        audioTracks: playerItemAudioTracks,
-                        subtitleTracks: subtitleTracks
-                    ) {
-                        print("✅ Composition created from player item tracks - native menu will be available")
-                        
-                        // Replace player item with composition
-                        let newPlayerItem = AVPlayerItem(asset: composition)
-                        newPlayerItem.textStyleRules = self.getTextStyleRules()
-                        
-                        // Replace current player item
-                        self.player?.replaceCurrentItem(with: newPlayerItem)
-                        self.playerItem = newPlayerItem
-                        
-                        // Set up native menu selection
-                        self.setInitialSubtitleSelection()
-                        self.addMediaSelectionObserver()
-                        
-                        print("✅ Native subtitle menu should now be available")
-                        self.autoPlayIfHLSReady()
-                        return
-                    } else {
-                        print("⚠️ Composition from player item tracks failed, trying direct composition...")
-                    }
-                } else {
-                    print("⚠️ No video tracks in player item yet, trying direct composition...")
-                }
-            }
-            
-            // Try direct composition method
-            if let composition = self.createCompositionWithMultipleSubtitlesForHLS(
-                videoAsset: self.videoAsset,
-                subtitleTracks: subtitleTracks
-            ) {
-                print("✅ Composition created successfully - native menu will be available")
-                
-                // Create new player item with composition
-                let newPlayerItem = AVPlayerItem(asset: composition)
-                newPlayerItem.textStyleRules = self.getTextStyleRules()
-                
-                // Replace current player item
-                self.player?.replaceCurrentItem(with: newPlayerItem)
-                self.playerItem = newPlayerItem
-                
-                // Set up native menu selection
-                self.setInitialSubtitleSelection()
-                self.addMediaSelectionObserver()
-                
-                print("✅ Native subtitle menu should now be available")
-                self.autoPlayIfHLSReady()
-            } else {
-                print("⚠️ Composition creation failed - falling back to custom UILabel display")
-                print("   Subtitles will be visible but won't appear in native iOS menu")
-                // Disable subtitle selection in player item to hide native menu
-                // Since we're using custom UILabel, the native menu would be confusing
-                if let playerItem = self.playerItem,
-                   let mediaSelectionGroup = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
-                    // Deselect any subtitle option to hide the menu
-                    playerItem.select(nil, in: mediaSelectionGroup)
-                    print("   🚫 Native subtitle menu disabled (using custom UILabel display)")
-                }
-                self.setupHLSSubtitleDisplay()
-                self.autoPlayIfHLSReady()
-            }
-        }
-    }
     
     /// Starts a timer that continuously tries to hide the CC button
     /// This is necessary because the button may be recreated by AVPlayerViewController
@@ -1239,106 +720,33 @@ open class FullScreenVideoPlayerView: UIView {
             }
         }
         
-        // Create subtitle label that shows/hides based on timing
-        let label = UILabel()
-        label.textColor = UIColor.white
-        label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-        label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 16)
-        label.numberOfLines = 0
-        label.isHidden = true  // Start hidden
-        label.alpha = 0.0       // Start transparent
-        
-        // Apply styling from options if available
-        if let options = _stOptions {
-            if let fontSize = options["fontSize"] as? CGFloat {
-                label.font = UIFont.systemFont(ofSize: fontSize)
-            }
-            if let fgColor = options["foregroundColor"] as? String {
-                label.textColor = parseRGBA(fgColor) ?? UIColor.white
-            }
-            if let bgColor = options["backgroundColor"] as? String {
-                label.backgroundColor = parseRGBA(bgColor)?.withAlphaComponent(0.7) ?? UIColor.black.withAlphaComponent(0.7)
-            }
-        }
-        
-        self.subtitleLabel = label
-        
-        // Add to the video player's content overlay view with delay to ensure proper layout
-        // CRITICAL: Wait for player view to be loaded before accessing contentOverlayView
-        func addSubtitleLabelToView() {
-            guard self.videoPlayer.isViewLoaded else {
-                print("⚠️ Player view not loaded yet, retrying in 0.2s...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    addSubtitleLabelToView()
-                }
-                return
+        // Use library for subtitle display instead of custom UILabel
+        // Load the selected subtitle track using the library
+        if let tracks = self._subtitleTracks,
+           let selectedId = self._selectedSubtitleId ?? tracks.first?["id"] as? String,
+           let selectedTrack = tracks.first(where: { ($0["id"] as? String) == selectedId }) ?? tracks.first,
+           let trackUrlString = selectedTrack["url"] as? String {
+            
+            // Resolve URL
+            var trackUrl: URL?
+            if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
+                let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
+                trackUrl = URL(string: normalizedUrlString)
+            } else if trackUrlString.hasPrefix("file://") {
+                trackUrl = URL(string: trackUrlString)
+            } else {
+                trackUrl = URL(fileURLWithPath: trackUrlString)
             }
             
-            guard let contentOverlayView = self.videoPlayer.contentOverlayView else {
-                print("⚠️ Content overlay view is nil, retrying in 0.2s...")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    addSubtitleLabelToView()
-                }
-                return
-            }
-            
-            contentOverlayView.addSubview(label)
-            label.translatesAutoresizingMaskIntoConstraints = false
-            
-            // Wait for the view to have proper dimensions before setting constraints
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                // Use more flexible constraints to avoid conflicts
-                NSLayoutConstraint.activate([
-                    label.centerXAnchor.constraint(equalTo: contentOverlayView.centerXAnchor),
-                    label.bottomAnchor.constraint(equalTo: contentOverlayView.bottomAnchor, constant: -50),
-                    label.leadingAnchor.constraint(greaterThanOrEqualTo: contentOverlayView.leadingAnchor, constant: 20),
-                    label.trailingAnchor.constraint(lessThanOrEqualTo: contentOverlayView.trailingAnchor, constant: -20),
-                    label.widthAnchor.constraint(lessThanOrEqualTo: contentOverlayView.widthAnchor, constant: -40)
-                ])
-                print("✅ Added subtitle label constraints after layout")
-            }
-            print("✅ Added subtitle label to content overlay view")
-        }
-        
-        // Start the retry mechanism
-        addSubtitleLabelToView()
-        
-        // Store current subtitle to avoid unnecessary updates
-        var currentDisplayedSubtitle: String? = nil
-        
-        // Set up subtitle timing with player time observer
-        let timeObserver = self.player?.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 1, timescale: 1), queue: .main) { [weak self] time in
-            guard let self = self, let label = self.subtitleLabel else { return }
-            
-            let currentTime = time.seconds
-            
-            // Find subtitle from active track
-            var currentSubtitle: (start: Double, end: Double, text: String)? = nil
-            if let activeTrackId = self._activeSubtitleTrackId,
-               let subtitles = self.subtitleTracksData[activeTrackId] {
-                currentSubtitle = self.findSubtitleForTime(currentTime, subtitles: subtitles)
-            }
-            
-            // Only update if subtitle text has changed
-            let newText = currentSubtitle?.text ?? ""
-            if newText != currentDisplayedSubtitle {
-                label.text = newText
-                currentDisplayedSubtitle = newText
-                
-                if !newText.isEmpty {
-                    // Show subtitle instantly
-                    label.isHidden = false
-                    label.alpha = 1.0
-                } else {
-                    // Hide subtitle instantly
-                    label.isHidden = true
+            if let subtitleUrl = trackUrl {
+                print("   Loading subtitle track using library: \(selectedId)")
+                self._activeSubtitleTrackId = selectedId
+                // Wait a bit for player to be ready
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.addSubtitlesToPlayer(subTitleUrl: subtitleUrl)
                 }
             }
         }
-        
-        // Store the observer for cleanup later
-        self.subtitleTimeObserver = timeObserver
     }
     
     private func parseRGBA(_ rgba: String) -> UIColor? {
@@ -1427,7 +835,7 @@ open class FullScreenVideoPlayerView: UIView {
             // For HLS, we already use loadAllSubtitleTracksForHLS directly
             // This fallback should only be for non-HLS streams
             if self.isHLSStream(url: self.videoAsset.url) {
-                self.loadAllSubtitleTracksForHLS()
+                // Subtitles will be loaded via setupMultipleSubtitlesWithAVPlayerViewControllerSubtitles
             } else {
                 // For non-HLS, we can't easily add external subtitles after composition fails
                 // Just continue without subtitles
@@ -1628,22 +1036,21 @@ open class FullScreenVideoPlayerView: UIView {
         tryCreateComposition()
     }
     
-    /// Fallback: Uses AVPlayerViewControllerSubtitles library for external subtitles
-    /// when video tracks aren't available (rare case)
+    /// Uses AVPlayerViewControllerSubtitles library for multiple subtitle tracks
     private func setupMultipleSubtitlesWithAVPlayerViewControllerSubtitles(subtitleTracks: [[String: Any]]) {
         print("📝 Setting up multiple subtitles using AVPlayerViewControllerSubtitles...")
-        print("   ⚠️ This fallback only supports one subtitle track")
-        print("   For multiple tracks, composition method should be used")
         
-        // For now, just use the first subtitle track
-        // AVPlayerViewControllerSubtitles may need to be extended for multiple tracks
-        if let firstTrack = subtitleTracks.first,
-           let trackUrlString = firstTrack["url"] as? String {
+        // Store tracks for switching
+        self._subtitleTracks = subtitleTracks
+        
+        // Load initial track (selected or first)
+        if let selectedId = self._selectedSubtitleId ?? subtitleTracks.first?["id"] as? String,
+           let selectedTrack = subtitleTracks.first(where: { ($0["id"] as? String) == selectedId }) ?? subtitleTracks.first,
+           let trackUrlString = selectedTrack["url"] as? String {
             
             // Resolve URL
             var trackUrl: URL?
             if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                // Normalize URL (HTTP -> HTTPS for ATS compliance)
                 let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
                 trackUrl = URL(string: normalizedUrlString)
             } else if trackUrlString.hasPrefix("file://") {
@@ -1653,40 +1060,101 @@ open class FullScreenVideoPlayerView: UIView {
             }
             
             if let subtitleUrl = trackUrl {
-                print("   Using first subtitle track: \(subtitleUrl.absoluteString)")
+                print("   Loading subtitle track: \(selectedId)")
                 self.addSubtitlesToPlayer(subTitleUrl: subtitleUrl)
+                self._activeSubtitleTrackId = selectedId
             }
         }
         
-        // Set initial track selection
+        // Set up track switching capability
         self.setInitialSubtitleSelection()
     }
     
-    private func createPlayerWithSubtitles(
-        videoTracks: [AVAssetTrack],
-        subtitleTracks: [[String: Any]]
-    ) {
-        let audioTracks = self.videoAsset.tracks(withMediaType: .audio)
+    /// Switch to a different subtitle track
+    private func switchSubtitleTrack(trackId: String) {
+        guard let tracks = self._subtitleTracks,
+              let track = tracks.first(where: { ($0["id"] as? String) == trackId }),
+              let trackUrlString = track["url"] as? String else {
+            print("⚠️ Track not found: \(trackId)")
+            return
+        }
         
-        if let composition = self.createCompositionWithMultipleSubtitles(
-            videoTracks: videoTracks,
-            audioTracks: audioTracks,
-            subtitleTracks: subtitleTracks
-        ) {
-            self.playerItem = AVPlayerItem(asset: composition)
-            self.playerItem?.textStyleRules = self.getTextStyleRules()
-            self.player = AVPlayer(playerItem: self.playerItem)
-            self.setupPlayer()
-            
-            // Set initial track selection
-            self.setInitialSubtitleSelection()
+        // Resolve URL
+        var trackUrl: URL?
+        if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
+            let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
+            trackUrl = URL(string: normalizedUrlString)
+        } else if trackUrlString.hasPrefix("file://") {
+            trackUrl = URL(string: trackUrlString)
         } else {
-            // Fallback
-            self.playerItem = AVPlayerItem(asset: self.videoAsset)
-            self.player = AVPlayer(playerItem: self.playerItem)
-            self.setupPlayer()
+            trackUrl = URL(fileURLWithPath: trackUrlString)
+        }
+        
+        if let subtitleUrl = trackUrl {
+            // Remove existing subtitles and add new one
+            // Library API: addSubtitles() sets up the label, then show() displays the content
+            self.videoPlayer.addSubtitles()
+            
+            if subtitleUrl.scheme == "http" || subtitleUrl.scheme == "https" {
+                // For remote URLs, download with custom headers and save to temp file, then use open()
+                self.downloadSubtitleWithHeaders(url: subtitleUrl) { [weak self] tempFileURL in
+                    guard let self = self, let fileURL = tempFileURL else { return }
+                    DispatchQueue.main.async {
+                        do {
+                            // Check if it's a VTT file
+                            let isVTT = fileURL.pathExtension.lowercased() == "vtt"
+                            
+                            if isVTT {
+                                // For VTT files, read and convert to SRT
+                                print("📝 Detected VTT file - converting to SRT format for library")
+                                let vttContent = try String(contentsOf: fileURL, encoding: .utf8)
+                                let srtContent = self.convertVTTToSRT(vttContent: vttContent)
+                                self.videoPlayer.show(subtitles: srtContent)
+                                print("✅ Successfully converted and displayed VTT subtitle")
+                            } else {
+                                // For SRT files, use library's open method
+                                try self.videoPlayer.open(fileFromLocal: fileURL, encoding: .utf8)
+                                print("✅ Successfully opened SRT subtitle file")
+                            }
+                            
+                            self.applySubtitleStyling()
+                            // Clean up temp file after a delay (give library time to read it)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                                try? FileManager.default.removeItem(at: fileURL)
+                            }
+                        } catch {
+                            print("Failed to open downloaded subtitle file: \(error)")
+                            // Clean up temp file on error
+                            try? FileManager.default.removeItem(at: fileURL)
+                        }
+                    }
+                }
+            } else {
+                // For local files, check format and handle accordingly
+                let isVTT = subtitleUrl.pathExtension.lowercased() == "vtt"
+                
+                do {
+                    if isVTT {
+                        // For VTT files, read and convert to SRT
+                        print("📝 Detected VTT file - converting to SRT format for library")
+                        let vttContent = try String(contentsOf: subtitleUrl, encoding: .utf8)
+                        let srtContent = self.convertVTTToSRT(vttContent: vttContent)
+                        self.videoPlayer.show(subtitles: srtContent)
+                        print("✅ Successfully converted and displayed VTT subtitle")
+                    } else {
+                        // For SRT files, use library's open method
+                        try self.videoPlayer.open(fileFromLocal: subtitleUrl, encoding: .utf8)
+                        print("✅ Successfully opened SRT subtitle file")
+                    }
+                    self.applySubtitleStyling()
+                } catch {
+                    print("Failed to switch subtitle track: \(error)")
+                }
+            }
+            self._activeSubtitleTrackId = trackId
         }
     }
+    
     
     private func createCompositionWithMultipleSubtitlesForHLS(
         videoAsset: AVURLAsset,
@@ -2717,52 +2185,20 @@ open class FullScreenVideoPlayerView: UIView {
     /// This loads all subtitle tracks, parses them, and displays using UILabel overlay
     /// Similar to working branch approach and AVPlayerViewController-Subtitles library
     private func setupCustomSubtitleDisplayForHLS(subtitleTracks: [[String: Any]]) {
-        print("🎬 ========================================")
-        print("🎬 CUSTOM SUBTITLE DISPLAY (FALLBACK)")
-        print("🎬 ========================================")
-        print("   📋 Why we're using this method:")
-        print("      - HLS streams don't expose tracks for composition creation")
-        print("      - This is an iOS AVFoundation limitation, NOT a backend issue")
-        print("      - Your backend provides all necessary data correctly")
-        print("      - This is the standard approach for HLS + external subtitles")
-        print("   📊 Data we have:")
-        print("      - Video URL: \(self.videoAsset.url.absoluteString)")
-        print("      - Subtitle tracks: \(subtitleTracks.count)")
-        for (index, track) in subtitleTracks.enumerated() {
-            if let trackId = track["id"] as? String,
-               let trackUrl = track["url"] as? String,
-               let trackLang = track["language"] as? String {
-                print("         Track \(index + 1): \(trackId) (\(trackLang))")
-                print("            URL: \(trackUrl)")
-            }
-        }
-        print("   🎯 What we'll do:")
-        print("      - Load all \(subtitleTracks.count) subtitle files via HTTP")
-        print("      - Parse VTT/SRT content")
-        print("      - Display using UILabel overlay on video player")
-        print("      - Update in real-time based on playback time")
-        print("   ⚠️ Note: Subtitles will be visible but won't appear in native iOS menu")
-        print("      (This is expected for HLS + external subtitles)")
-        print("🎬 ========================================")
+        print("🎬 Setting up subtitles for HLS using AVPlayerViewController-Subtitles library...")
+        print("   📊 Subtitle tracks: \(subtitleTracks.count)")
         
-        // Load all subtitle tracks asynchronously (like working branch)
-        var loadedCount = 0
-        let totalTracks = subtitleTracks.count
+        // Store tracks for switching
+        self._subtitleTracks = subtitleTracks
         
-        for track in subtitleTracks {
-            guard let trackUrlString = track["url"] as? String,
-                  let trackId = track["id"] as? String else {
-                loadedCount += 1
-                if loadedCount >= totalTracks {
-                    self.finishCustomSubtitleSetup()
-                }
-                continue
-            }
+        // Load the selected track using the library
+        if let selectedId = self._selectedSubtitleId ?? subtitleTracks.first?["id"] as? String,
+           let selectedTrack = subtitleTracks.first(where: { ($0["id"] as? String) == selectedId }) ?? subtitleTracks.first,
+           let trackUrlString = selectedTrack["url"] as? String {
             
             // Resolve URL
             var trackUrl: URL?
             if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                // Normalize URL (HTTP -> HTTPS for ATS compliance)
                 let normalizedUrlString = self.normalizeSubtitleURL(trackUrlString)
                 trackUrl = URL(string: normalizedUrlString)
             } else if trackUrlString.hasPrefix("public/assets") {
@@ -2780,257 +2216,15 @@ open class FullScreenVideoPlayerView: UIView {
                 trackUrl = URL(fileURLWithPath: trackUrlString)
             }
             
-            guard let subtitleUrl = trackUrl else {
-                print("   ❌ Failed to resolve URL for track: \(trackId)")
-                print("      Original URL string: \(trackUrlString)")
-                loadedCount += 1
-                if loadedCount >= totalTracks {
-                    self.finishCustomSubtitleSetup()
-                }
-                continue
-            }
-            
-            print("   📥 Loading subtitle track: \(trackId)")
-            print("      Resolved URL: \(subtitleUrl.absoluteString)")
-            
-            // Load subtitle file with proper headers for authentication
-            // Use the same approach as working branch: URLSession.shared with headers in request
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else { return }
-                
-                // Use URLSession.shared (like working branch) - it handles redirects automatically
-                let session = URLSession.shared
-                var request = URLRequest(url: subtitleUrl)
-                
-                // Add headers if they were provided for the video
-                if let headers = self._stHeaders ?? self._videoHeaders {
-                    for (key, value) in headers {
-                        request.setValue(value, forHTTPHeaderField: key)
-                    }
-                    print("      ✅ Added \(headers.count) authentication headers")
-                } else {
-                    print("      ⚠️ No authentication headers available")
-                }
-                
-                print("      🌐 Starting HTTP request for subtitle file...")
-                let task = session.dataTask(with: request) { [weak self] data, response, error in
-                    guard let self = self else { return }
-                    
-                    if let error = error {
-                        print("      ❌ HTTP Error loading subtitle for track \(trackId):")
-                        print("         Error: \(error.localizedDescription)")
-                        print("         URL: \(subtitleUrl.absoluteString)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            if loadedCount >= totalTracks {
-                                self.finishCustomSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-                    
-                    // Check HTTP response status
-                    if let httpResponse = response as? HTTPURLResponse {
-                        print("      📊 HTTP Response for track \(trackId):")
-                        print("         Status Code: \(httpResponse.statusCode)")
-                        print("         Content-Type: \(httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "unknown")")
-                        print("         Content-Length: \(httpResponse.value(forHTTPHeaderField: "Content-Length") ?? "unknown") bytes")
-                        
-                        if httpResponse.statusCode != 200 {
-                            print("      ❌ HTTP Error: Status code \(httpResponse.statusCode) for track \(trackId)")
-                            DispatchQueue.main.async {
-                                self.subtitleTracksData[trackId] = []
-                                loadedCount += 1
-                                if loadedCount >= totalTracks {
-                                    self.finishCustomSubtitleSetup()
-                                }
-                            }
-                            return
-                        }
-                    }
-                    
-                    guard let data = data else {
-                        print("      ❌ No data received for track: \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            if loadedCount >= totalTracks {
-                                self.finishCustomSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-                    
-                    print("      ✅ Received \(data.count) bytes of subtitle data")
-                    
-                    guard let subtitleContent = String(data: data, encoding: .utf8) else {
-                        print("      ❌ Failed to decode subtitle content as UTF-8 for track: \(trackId)")
-                        print("         Data size: \(data.count) bytes")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            if loadedCount >= totalTracks {
-                                self.finishCustomSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-                    
-                    print("      📝 Decoded subtitle content (\(subtitleContent.count) characters)")
-                    print("      Preview (first 100 chars): \(String(subtitleContent.prefix(100)))")
-                    
-                    // Check if we got an error response (like 401)
-                    if subtitleContent.contains("\"status\":401") || subtitleContent.contains("Unauthorized") {
-                        print("      ⚠️ Authentication failed (401) for subtitle track: \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            if loadedCount >= totalTracks {
-                                self.finishCustomSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-                    
-                    // Parse subtitle content
-                    let isVTT = subtitleContent.hasPrefix("WEBVTT")
-                    print("      🔍 Detected format: \(isVTT ? "WebVTT" : "SRT")")
-                    
-                    let subtitles: [(start: Double, end: Double, text: String)]
-                    if isVTT {
-                        subtitles = self.parseVTTContent(subtitleContent)
-                    } else {
-                        subtitles = self.parseSRTContent(subtitleContent)
-                    }
-                    
-                    print("      ✅ Successfully parsed \(subtitles.count) subtitle entries for track: \(trackId)")
-                    if !subtitles.isEmpty {
-                        print("         First subtitle: \(subtitles[0].start)s - \(subtitles[0].end)s")
-                        print("         Last subtitle: \(subtitles[subtitles.count - 1].start)s - \(subtitles[subtitles.count - 1].end)s")
-                    }
-                    
-                    DispatchQueue.main.async {
-                        self.subtitleTracksData[trackId] = subtitles
-                        loadedCount += 1
-                        if loadedCount >= totalTracks {
-                            self.finishCustomSubtitleSetup()
-                        }
-                    }
-                }
-                
-                task.resume()
-            }
-        }
-    }
-    
-    /// Called when all subtitle tracks have finished loading
-    private func finishCustomSubtitleSetup() {
-        print("✅ All subtitle tracks loaded for custom display")
-        print("   Loaded tracks: \(self.subtitleTracksData.keys.joined(separator: ", "))")
-        
-        // Set initial active track
-        if let selectedId = _selectedSubtitleId ?? _subtitleTracks?.first?["id"] as? String {
-            _activeSubtitleTrackId = selectedId
-            print("   🎯 Initial active track: \(selectedId)")
-        }
-        
-        // Wait for player to be ready before adding subtitle display
+            if let subtitleUrl = trackUrl {
+                print("   Loading subtitle track using library: \(selectedId)")
+                self._activeSubtitleTrackId = selectedId
+                // Wait for player to be ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            self.setupCustomSubtitleLabel()
-        }
-    }
-    
-    /// Sets up UILabel overlay for custom subtitle display (like working branch and AVPlayerViewController-Subtitles)
-    private func setupCustomSubtitleLabel() {
-        print("🎨 Setting up custom subtitle UILabel overlay...")
-        
-        // Create subtitle label (similar to AVPlayerViewController-Subtitles library)
-        let label = UILabel()
-        label.textColor = UIColor.white
-        label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
-        label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 16)
-        label.numberOfLines = 0
-        label.isHidden = true
-        label.alpha = 0.0
-        
-        // Apply styling from options if available
-        if let options = _stOptions {
-            if let fontSize = options["fontSize"] as? CGFloat {
-                label.font = UIFont.systemFont(ofSize: fontSize)
-            }
-            if let fgColor = options["foregroundColor"] as? String {
-                // Parse color if needed
-                label.textColor = UIColor.white // Default for now
-            }
-            if let bgColor = options["backgroundColor"] as? String {
-                // Parse color if needed
-                label.backgroundColor = UIColor.black.withAlphaComponent(0.7) // Default for now
-            }
-        }
-        
-        self.subtitleLabel = label
-        
-        // Add to the video player's content overlay view
-        if let contentOverlayView = self.videoPlayer.contentOverlayView {
-            contentOverlayView.addSubview(label)
-            label.translatesAutoresizingMaskIntoConstraints = false
-            
-            // Wait for the view to have proper dimensions before setting constraints
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                NSLayoutConstraint.activate([
-                    label.centerXAnchor.constraint(equalTo: contentOverlayView.centerXAnchor),
-                    label.bottomAnchor.constraint(equalTo: contentOverlayView.bottomAnchor, constant: -50),
-                    label.leadingAnchor.constraint(greaterThanOrEqualTo: contentOverlayView.leadingAnchor, constant: 20),
-                    label.trailingAnchor.constraint(lessThanOrEqualTo: contentOverlayView.trailingAnchor, constant: -20),
-                    label.widthAnchor.constraint(lessThanOrEqualTo: contentOverlayView.widthAnchor, constant: -40)
-                ])
-                print("   ✅ Added subtitle label constraints")
-            }
-            print("   ✅ Added subtitle label to content overlay view")
-        } else {
-            print("   ⚠️ Content overlay view is nil!")
-        }
-        
-        // Store current subtitle to avoid unnecessary updates
-        var currentDisplayedSubtitle: String? = nil
-        
-        // Set up subtitle timing with player time observer (like working branch)
-        let timeObserver = self.player?.addPeriodicTimeObserver(forInterval: CMTimeMake(value: 1, timescale: 1), queue: .main) { [weak self] time in
-            guard let self = self, let label = self.subtitleLabel else { return }
-            
-            let currentTime = time.seconds
-            
-            // Find subtitle from active track
-            var currentSubtitle: (start: Double, end: Double, text: String)? = nil
-            if let activeTrackId = self._activeSubtitleTrackId,
-               let subtitles = self.subtitleTracksData[activeTrackId] {
-                currentSubtitle = self.findSubtitleForTime(currentTime, subtitles: subtitles)
-            }
-            
-            // Only update if subtitle text has changed
-            let newText = currentSubtitle?.text ?? ""
-            if newText != currentDisplayedSubtitle {
-                label.text = newText
-                currentDisplayedSubtitle = newText
-                
-                if !newText.isEmpty {
-                    // Show subtitle instantly
-                    label.isHidden = false
-                    label.alpha = 1.0
-                    print("   📝 Subtitle: \(newText.prefix(50))...")
-                } else {
-                    // Hide subtitle instantly
-                    label.isHidden = true
+                    self?.addSubtitlesToPlayer(subTitleUrl: subtitleUrl)
                 }
             }
         }
-        
-        // Store the observer for cleanup later
-        self.subtitleTimeObserver = timeObserver
-        print("   ✅ Custom subtitle display setup complete")
     }
     
     private func convertSRTToWebVTT(srtURL: URL, language: String) -> URL? {
@@ -3604,11 +2798,6 @@ open class FullScreenVideoPlayerView: UIView {
             self.periodicTimeObserver = nil
         }
         
-        if let subtitleObserver = self.subtitleTimeObserver {
-            self.player?.removeTimeObserver(subtitleObserver)
-            self.subtitleTimeObserver = nil
-        }
-        
         // Clean up player
         self.player?.pause()
         self.player?.replaceCurrentItem(with: nil)
@@ -3624,20 +2813,8 @@ open class FullScreenVideoPlayerView: UIView {
         // Clean up video player
         self.videoPlayer.player = nil
         
-        // Clean up subtitle time observer (for custom UILabel rendering)
-        if let subtitleObserver = self.subtitleTimeObserver {
-            self.player?.removeTimeObserver(subtitleObserver)
-            self.subtitleTimeObserver = nil
-        }
-        
-        // Clean up subtitle labels from content overlay (for custom UILabel rendering)
-        if let contentOverlayView = self.videoPlayer.contentOverlayView {
-            for subview in contentOverlayView.subviews {
-                if subview is UILabel {
-                    subview.removeFromSuperview()
-                }
-            }
-        }
+        // Library handles subtitle cleanup automatically
+        // No need to manually clean up subtitle labels or observers
         
         // Clear any cached data
         self._isLoaded.removeAll()
