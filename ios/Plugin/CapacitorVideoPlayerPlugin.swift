@@ -2,6 +2,7 @@ import Foundation
 import Capacitor
 import AVKit
 import UIKit
+import os
 
 /**
  * Please read the Capacitor iOS Plugin Development Guide
@@ -11,6 +12,11 @@ import UIKit
 // swiftlint:disable file_length
 // swiftlint:disable type_body_length
 public class CapacitorVideoPlayerPlugin: CAPPlugin {
+    // Logger for this class
+    static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "org.dwbn.awareness",
+        category: String(describing: CapacitorVideoPlayerPlugin.self)
+    )
     public var call: CAPPluginCall?
     public var videoPlayer: AVPlayerViewController?
     public var bgPlayer: AVPlayer?
@@ -51,7 +57,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         }
     }
     deinit {
-        print("🗑️ CapacitorVideoPlayerPlugin deinit called")
+        Self.logger.debug("CapacitorVideoPlayerPlugin deinit called")
         
         // Clean up video player references
         self.videoPlayerFullScreenView = nil
@@ -79,7 +85,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         self.foregroundObserver = nil
         self.vpInternalObserver = nil
         
-        print("✅ Plugin cleanup completed")
+        Self.logger.debug("Plugin cleanup completed")
     }
 
     @objc func echo(_ call: CAPPluginCall) {
@@ -178,7 +184,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         if mode == "fullscreen" {
             guard let videoPath = call.options["url"] as? String else {
                 let error: String = "Must provide a video url"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "initPlayer", "message": error])
                 return
             }
@@ -191,7 +197,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 subtitleTracks = subtitlesArray
             } else if let stPath = call.options["subtitle"] as? String {
                 // Backward compatibility: single subtitle
-                print("[CapacitorVideoPlayer] The 'subtitle' option is deprecated. Use 'subtitles' array instead.")
+                Self.logger.warning("[CapacitorVideoPlayer] The 'subtitle' option is deprecated. Use 'subtitles' array instead.")
                 let stLanguage = call.options["language"] as? String ?? "en"
                 subtitleTracks = [[
                     "id": stLanguage,
@@ -322,7 +328,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         self.call = call
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "isPlaying", "message": error])
             return
         }
@@ -336,7 +342,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen player not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "isPlaying", "message": error])
                 return
             }
@@ -350,14 +356,14 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         // Check if player has been dismissed
         if self.isPlayerDismissed {
             let error: String = "Player has been dismissed"
-            print("⚠️ \(error) - ignoring play call")
+            Self.logger.warning("\(error, privacy: .public) - ignoring play call")
             call.resolve([ "result": false, "method": "play", "message": error])
             return
         }
         
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "play", "message": error])
             return
         }
@@ -371,7 +377,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen player not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "play", "message": error])
                 return
             }
@@ -386,14 +392,14 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         // Check if player has been dismissed
         if self.isPlayerDismissed {
             let error: String = "Player has been dismissed"
-            print("⚠️ \(error) - ignoring pause call")
+            Self.logger.warning("\(error, privacy: .public) - ignoring pause call")
             call.resolve([ "result": false, "method": "pause", "message": error])
             return
         }
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "pause", "message": error])
             return
         }
@@ -406,7 +412,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen player not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "pause", "message": error])
                 return
             }
@@ -420,7 +426,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "getDuration", "message": error])
             return
         }
@@ -433,7 +439,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "getDuration", "message": error])
                 return
             }
@@ -447,7 +453,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "getCurrentTime", "message": error])
             return
         }
@@ -455,7 +461,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         // Check if player has been dismissed
         if self.isPlayerDismissed {
             let error: String = "Player has been dismissed"
-            print("⚠️ \(error) - ignoring getCurrentTime call")
+            Self.logger.warning("\(error, privacy: .public) - ignoring getCurrentTime call")
             call.resolve([ "result": false, "method": "getCurrentTime", "message": error])
             return
         }
@@ -470,7 +476,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print("⚠️ \(error) - player may have been dismissed")
+                Self.logger.warning("\(error, privacy: .public) - player may have been dismissed")
                 call.resolve([ "result": false, "method": "getCurrentTime", "message": error])
                 return
             }
@@ -486,20 +492,20 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         // Check if player has been dismissed
         if self.isPlayerDismissed {
             let error: String = "Player has been dismissed"
-            print("⚠️ \(error) - ignoring setCurrentTime call")
+            Self.logger.warning("\(error, privacy: .public) - ignoring setCurrentTime call")
             call.resolve([ "result": false, "method": "setCurrentTime", "message": error])
             return
         }
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setCurrentTime", "message": error])
             return
         }
         guard let seekTime = call.options["seektime"] as? Double else {
             let error: String = "Must provide a time in second"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setCurrentTime", "message": error])
             return
         }
@@ -513,7 +519,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "setCurrentTime", "message": error])
                 return
             }
@@ -527,7 +533,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "getVolume", "message": error])
             return
         }
@@ -540,7 +546,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "getVolume", "message": error])
                 return
             }
@@ -554,13 +560,13 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setVolume", "message": error])
             return
         }
         guard let volume = call.options["volume"] as? Float else {
             let error: String = "Must provide a volume value"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setVolume", "message": error])
 
             return
@@ -574,7 +580,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "setVolume", "message": error])
                 return
             }
@@ -589,7 +595,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "getMuted", "message": error])
             return
         }
@@ -602,7 +608,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "getMuted", "message": error])
                 return
             }
@@ -616,13 +622,13 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setMuted", "message": error])
             return
         }
         guard let muted = call.options["muted"] as? Bool else {
             let error: String = "Must provide a boolean true/false"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setMuted", "message": error])
             return
         }
@@ -635,7 +641,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "setMuted", "message": error])
                 return
             }
@@ -657,7 +663,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen player not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "stopAllPlayers", "message": error])
                 return
             }
@@ -672,7 +678,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "getRate", "message": error])
             return
         }
@@ -685,7 +691,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "getRate", "message": error])
                 return
             }
@@ -699,13 +705,13 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setRate", "message": error])
             return
         }
         guard let rate = call.options["rate"] as? Float else {
             let error: String = "Must provide a rate value"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setRate", "message": error])
 
             return
@@ -723,7 +729,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen playerId not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "setRate", "message": error])
                 return
             }
@@ -736,7 +742,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         
         guard let playerId = call.options["playerId"] as? String else {
             let error: String = "Must provide a playerId"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "exitFullScreen", "message": error])
             return
         }
@@ -757,13 +763,13 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                 }
             } else {
                 let error: String = "Fullscreen player not found"
-                print(error)
+                Self.logger.error("\(error, privacy: .public)")
                 call.resolve([ "result": false, "method": "exitFullScreen", "message": error])
                 return
             }
         } else {
             let error: String = "Invalid player mode or playerId mismatch"
-            print(error)
+            Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "exitFullScreen", "message": error])
             return
         }

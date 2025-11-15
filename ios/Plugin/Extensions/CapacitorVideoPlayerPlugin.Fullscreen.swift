@@ -9,6 +9,7 @@
 import Foundation
 import Capacitor
 import AVKit
+import os
 
 extension CapacitorVideoPlayerPlugin {
 
@@ -49,7 +50,7 @@ extension CapacitorVideoPlayerPlugin {
                 guard let videoPlayer: AVPlayerViewController =
                         self?.videoPlayerFullScreenView?.videoPlayer else {
                     let error: String = "No videoPlayer available"
-                    print(error)
+                    Self.logger.error("\(error, privacy: .public)")
                     call.resolve([ "result": false, "method": "createVideoPlayerFullScreenView",
                                    "message": error])
                     return
@@ -73,7 +74,7 @@ extension CapacitorVideoPlayerPlugin {
                                                 "value": true])
                                 return
                             } catch let error as NSError {
-                                print("Unable to activate audio session:  \(error.localizedDescription)")
+                                Self.logger.error("Unable to activate audio session: \(error.localizedDescription, privacy: .public)")
                                 call.resolve([
                                                 "result": false,
                                                 "method": "createVideoPlayerFullScreenView",

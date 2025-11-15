@@ -7,8 +7,13 @@
 //
 
 import UIKit
+import os
 
 class VideoModel: NSObject {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "org.dwbn.awareness",
+        category: String(describing: VideoModel.self)
+    )
     var videos: [Video] = []
 
     func addVideo(video: Video) {
@@ -36,7 +41,7 @@ class VideoModel: NSObject {
             guard let height: Int = video.height else {
                 continue
             }
-            print("Video \(urlPath) \n \(title) \n \(content) \n \(width) \(height)")
+            Self.logger.debug("Video \(urlPath, privacy: .public) \n \(title, privacy: .public) \n \(content, privacy: .public) \n \(width, privacy: .public) \(height, privacy: .public)")
         }
     }
 }

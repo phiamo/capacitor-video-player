@@ -10,8 +10,13 @@
 //
 
 import UIKit
+import os
 
 extension UIView {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "org.dwbn.awareness",
+        category: "UIView+Anchor"
+    )
     // swiftlint:disable function_parameter_count
     func anchor (paddingTop: CGFloat, paddingLeft: CGFloat, paddingBottom: CGFloat,
                  paddingRight: CGFloat, width: CGFloat, height: CGFloat, enableInsets: Bool,
@@ -25,8 +30,8 @@ extension UIView {
             let insets = self.safeAreaInsets
             topInset = insets.top
             bottomInset = insets.bottom
-            print("Top: \(topInset)")
-            print("bottom: \(bottomInset)")
+            Self.logger.trace("Top: \(topInset, privacy: .public)")
+            Self.logger.trace("bottom: \(bottomInset, privacy: .public)")
         }
 
         translatesAutoresizingMaskIntoConstraints = false

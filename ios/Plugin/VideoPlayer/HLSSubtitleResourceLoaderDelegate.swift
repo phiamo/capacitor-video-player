@@ -7,9 +7,16 @@
 
 import Foundation
 import AVFoundation
+import os
 
 /// Resource loader delegate that injects subtitle tracks into HLS playlists
 class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate {
+    
+    // Logger for this class
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "org.dwbn.awareness",
+        category: String(describing: HLSSubtitleResourceLoaderDelegate.self)
+    )
     
     // Custom URL scheme to trigger resource loader interception
     static let customSchemePrefix = "customscheme"
@@ -41,7 +48,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         let requestString = loadingRequest.request.url?.absoluteString ?? ""
         let dataRequest = loadingRequest.dataRequest
         
-        print("🔍 Resource loader intercepted request: \(requestString)")
+        Self.logger.trace("Resource loader intercepted request: \(requestString, privacy: .public)")
         
         // Handle subtitle playlist requests
         if requestString.hasPrefix(subtitlePlaylistUrlPrefix) {
@@ -63,7 +70,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                                    (dataRequest.requestedLength < 50000) // Master playlists are typically small (< 50KB)
             
             if isMasterPlaylist {
-                print("📋 Detected master playlist request")
+                Self.logger.debug("Detected master playlist request")
                 return handleMasterPlaylistRequest(loadingRequest: loadingRequest)
             }
         }
@@ -75,11 +82,11 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     // MARK: - Master Playlist Handling
     
     private func handleMasterPlaylistRequest(loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
-        print("📋 Handling master playlist request")
+        Self.logger.debug("Handling master playlist request")
         
         // Remove custom scheme to get original URL
         guard let requestUrlString = loadingRequest.request.url?.absoluteString else {
-            print("❌ Failed to get request URL")
+            Self.logger.error("Failed to get request URL")
             loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             return true
         }
@@ -103,7 +110,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         }
         
         guard let originalUrl = URL(string: originalUrlString) else {
-            print("❌ Failed to create original URL from: \(originalUrlString)")
+            Self.logger.error("Failed to create original URL from: \(originalUrlString, privacy: .public)")
             loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             return true
         }
@@ -119,19 +126,19 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             guard let self = self else { return }
             
             if let error = error {
-                print("❌ Error fetching master playlist: \(error.localizedDescription)")
+                Self.logger.error("Error fetching master playlist: \(error.localizedDescription, privacy: .public)")
                 loadingRequest.finishLoading(with: error)
                 return
             }
             
             guard let data = data,
                   let playlistString = String(data: data, encoding: .utf8) else {
-                print("❌ Failed to decode master playlist")
+                Self.logger.error("Failed to decode master playlist")
                 loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
                 return
             }
             
-            print("✅ Master playlist fetched, injecting subtitle tracks...")
+            Self.logger.notice("Master playlist fetched, injecting subtitle tracks")
             
             // Inject subtitle tracks into the playlist
             let modifiedPlaylist = self.injectSubtitlesIntoPlaylist(playlistString: playlistString)
@@ -140,7 +147,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             if let modifiedData = modifiedPlaylist.data(using: .utf8) {
                 loadingRequest.dataRequest?.respond(with: modifiedData)
                 loadingRequest.finishLoading()
-                print("✅ Master playlist modified and sent")
+                Self.logger.notice("Master playlist modified and sent")
             } else {
                 loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             }
@@ -153,10 +160,10 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     // MARK: - Subtitle Playlist Handling
     
     private func handleSubtitlePlaylistRequest(loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
-        print("📝 Handling subtitle playlist request")
+        Self.logger.debug("Handling subtitle playlist request")
         
         guard let requestUrl = loadingRequest.request.url else {
-            print("❌ Invalid subtitle playlist request URL")
+            Self.logger.error("Invalid subtitle playlist request URL")
             loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             return true
         }
@@ -168,7 +175,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         let urlComponents = requestString.replacingOccurrences(of: subtitlePlaylistUrlPrefix + "://", with: "")
         let trackIdentifier = urlComponents.components(separatedBy: ".").first ?? ""
         
-        print("   Track identifier: \(trackIdentifier)")
+        Self.logger.trace("Track identifier: \(trackIdentifier, privacy: .public)")
         
         // Find matching subtitle track
         guard let track = subtitleTracks.first(where: { track in
@@ -176,14 +183,14 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             let language = track["language"] as? String ?? ""
             return trackId == trackIdentifier || language == trackIdentifier
         }) else {
-            print("❌ No matching subtitle track found for: \(trackIdentifier)")
+            Self.logger.error("No matching subtitle track found for: \(trackIdentifier, privacy: .public)")
             loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             return true
         }
         
         guard let subtitleUrlString = track["url"] as? String,
               var subtitleUrl = URL(string: subtitleUrlString) else {
-            print("❌ Invalid subtitle URL in track")
+            Self.logger.error("Invalid subtitle URL in track")
             loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             return true
         }
@@ -198,10 +205,10 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                     urlComponents.queryItems = queryItems
                     if let newUrl = urlComponents.url {
                         subtitleUrl = newUrl
-                        print("   ✅ Appended bearer token to subtitle URL")
+                        Self.logger.trace("Appended bearer token to subtitle URL")
                     }
                 } else {
-                    print("   ℹ️ Bearer token already present in URL")
+                    Self.logger.trace("Bearer token already present in URL")
                 }
             } else {
                 // Fallback: append as query string manually
@@ -209,12 +216,12 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 if let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
                    let newUrl = URL(string: "\(subtitleUrl.absoluteString)\(separator)bearer=\(encodedToken)") {
                     subtitleUrl = newUrl
-                    print("   ✅ Appended bearer token to subtitle URL (fallback method)")
+                    Self.logger.trace("Appended bearer token to subtitle URL (fallback method)")
                 }
             }
         }
         
-        print("   📥 Fetching subtitle from: \(subtitleUrl.absoluteString)")
+        Self.logger.debug("Fetching subtitle from: \(subtitleUrl.absoluteString, privacy: .public)")
         
         // Fetch subtitle file
         var request = URLRequest(url: subtitleUrl)
@@ -226,19 +233,19 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             guard let self = self else { return }
             
             if let error = error {
-                print("❌ Error fetching subtitle: \(error.localizedDescription)")
+                Self.logger.error("Error fetching subtitle: \(error.localizedDescription, privacy: .public)")
                 loadingRequest.finishLoading(with: error)
                 return
             }
             
             guard let data = data,
                   let subtitleContent = String(data: data, encoding: .utf8) else {
-                print("❌ Failed to decode subtitle content")
+                Self.logger.error("Failed to decode subtitle content")
                 loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
                 return
             }
             
-            print("   ✅ Subtitle content fetched (\(data.count) bytes)")
+            Self.logger.notice("Subtitle content fetched (\(data.count, privacy: .public) bytes)")
             
             // Create HLS subtitle playlist from VTT/SRT content
             let playlist = self.createSubtitlePlaylistFromVTT(vttContent: subtitleContent, subtitleUrl: subtitleUrl)
@@ -247,7 +254,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             if let playlistData = playlist.data(using: .utf8) {
                 loadingRequest.dataRequest?.respond(with: playlistData)
                 loadingRequest.finishLoading()
-                print("   ✅ Subtitle playlist created and sent")
+                Self.logger.notice("Subtitle playlist created and sent")
             } else {
                 loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             }
@@ -322,7 +329,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             .replacingOccurrences(of: "\r", with: "")
         
         guard let arrowRange = noWhitespaceVtt.range(of: "-->", options: .backwards) else {
-            print("   ⚠️ Could not find timestamp in VTT, using default duration")
+            Self.logger.warning("Could not find timestamp in VTT, using default duration")
             return createDefaultSubtitlePlaylist(subtitleUrl: subtitleUrl)
         }
         
@@ -333,7 +340,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         guard let firstColon = afterArrow.firstIndex(of: ":"),
               let period = afterArrow.firstIndex(of: "."),
               firstColon > afterArrow.startIndex else {
-            print("   ⚠️ Could not parse timestamp, using default duration")
+            Self.logger.warning("Could not parse timestamp, using default duration")
             return createDefaultSubtitlePlaylist(subtitleUrl: subtitleUrl)
         }
         
@@ -349,7 +356,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
               let hours = Int(timeComponents[0]),
               let minutes = Int(timeComponents[1]),
               let seconds = Int(timeComponents[2]) else {
-            print("   ⚠️ Could not parse time components, using default duration")
+            Self.logger.warning("Could not parse time components, using default duration")
             return createDefaultSubtitlePlaylist(subtitleUrl: subtitleUrl)
         }
         
@@ -415,7 +422,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         }
         
         guard let redirectUrl = URL(string: originalUrlString) else {
-            print("❌ Failed to create redirect URL from: \(requestString)")
+            Self.logger.error("Failed to create redirect URL from: \(requestString, privacy: .public)")
             return false
         }
         

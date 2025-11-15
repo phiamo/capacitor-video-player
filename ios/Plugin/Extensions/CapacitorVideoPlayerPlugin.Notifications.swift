@@ -8,6 +8,7 @@
 
 import Foundation
 import MediaPlayer
+import os
 
 // MARK: - Handle Notifications
 
@@ -91,7 +92,7 @@ extension CapacitorVideoPlayerPlugin {
         self.isPlayerDismissed = true
         
         if let vPFSV = self.videoPlayerFullScreenView {
-            print("🧹 Cleaning up video player on exit...")
+            Self.logger.debug("Cleaning up video player on exit")
             
             // Comprehensive cleanup
             vPFSV.cleanup()
@@ -112,7 +113,7 @@ extension CapacitorVideoPlayerPlugin {
                 }
             }
             
-            print("✅ Video player cleanup completed")
+            Self.logger.debug("Video player cleanup completed")
         }
         if let viewController = self.bridge?.viewController {
             viewController.dismiss(animated: true, completion: {
@@ -123,7 +124,7 @@ extension CapacitorVideoPlayerPlugin {
                             self.audioSession = nil
                         } catch {
                             let error: String = "playerFullscreenExit: Failed to deactivate audio session category"
-                            print(error)
+                            Self.logger.error("\(error, privacy: .public)")
                         }
                     }
                 }

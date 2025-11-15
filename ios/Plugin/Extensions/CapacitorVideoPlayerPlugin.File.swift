@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 
 extension CapacitorVideoPlayerPlugin {
 
@@ -48,7 +49,7 @@ extension CapacitorVideoPlayerPlugin {
             let path: String = String(filePath.dropFirst(12))
             let vPath: String = docPath.appendingFormat("/\(path)")
             if !isFileExists(filePath: vPath) {
-                print("*** file does not exist at path \n \(vPath) \n***")
+                Self.logger.error("file does not exist at path \n \(vPath, privacy: .public) \n")
                 let info: [String: Any] = ["dismiss": true]
                 self.notifyListeners("jeepCapVideoPlayerExit", data: info, retainUntilConsumed: true)
                 dict["message"] = "file does not exist"
@@ -71,7 +72,7 @@ extension CapacitorVideoPlayerPlugin {
                                     String(fPathArray[1].dropFirst(38)))
                 ).absoluteString
                 if !isFileExists(filePath: fPath) {
-                    print("*** file does not exist at path \n \(fPath) \n***")
+                    Self.logger.error("file does not exist at path \n \(fPath, privacy: .public) \n")
                     let info: [String: Any] = ["dismiss": true]
                     self.notifyListeners("jeepCapVideoPlayerExit", data: info,
                                          retainUntilConsumed: true)
@@ -93,7 +94,7 @@ extension CapacitorVideoPlayerPlugin {
                                  String(fPathArray[1]))
                  ).absoluteString
                  if !isFileExists(filePath: fPath) {
-                     print("*** file does not exist at path \n \(fPath) \n***")
+                     Self.logger.error("file does not exist at path \n \(fPath, privacy: .public) \n")
                      let info: [String: Any] = ["dismiss": true]
                      self.notifyListeners("jeepCapVideoPlayerExit", data: info,
                                           retainUntilConsumed: true)
