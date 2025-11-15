@@ -304,17 +304,17 @@ open class FullScreenVideoPlayerView: UIView {
                       self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
                   } else {
                       // For non-HLS streams, check for video tracks
-                  let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
-                  guard !videoTracks.isEmpty else {
-                          Self.logger.debug("No video tracks found in non-HLS stream - using simple player")
-                      self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                      self.player = AVPlayer(playerItem: self.playerItem)
-                      self.setupPlayer()
-                      return
-                  }
-                  
-                  // Continue with subtitle logic only after HLS is loaded
-                  self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
+                      let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
+                      guard !videoTracks.isEmpty else {
+                              Self.logger.debug("No video tracks found in non-HLS stream - using simple player")
+                          self.playerItem = AVPlayerItem(asset: self.videoAsset)
+                          self.player = AVPlayer(playerItem: self.playerItem)
+                          self.setupPlayer()
+                          return
+                      }
+                      
+                      // Continue with subtitle logic only after HLS is loaded
+                      self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
                   }
               }
           }
