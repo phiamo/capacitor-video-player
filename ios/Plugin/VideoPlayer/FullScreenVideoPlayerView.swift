@@ -43,6 +43,8 @@ open class FullScreenVideoPlayerView: UIView {
     private var subtitleTracksData: [String: [(start: Double, end: Double, text: String)]] = [:]
     private var subtitleLabel: UILabel?
     private var subtitleRetryInProgress: Bool = false // Prevent duplicate retry mechanisms
+    // Resource loader delegate for HLS subtitle injection
+    private var hlsSubtitleResourceLoader: HLSSubtitleResourceLoaderDelegate?
     
     // Custom URLSession delegate to handle redirects with authentication
     private class SubtitleURLSessionDelegate: NSObject, URLSessionTaskDelegate {
@@ -165,6 +167,32 @@ open class FullScreenVideoPlayerView: UIView {
         self._smallTitle = smallTitle
         self._artwork = artwork
 
+        // For HLS streams with subtitles, use custom URL scheme to enable resource loader
+        let finalUrl: URL
+        if let tracks = subtitleTracks, !tracks.isEmpty, FullScreenVideoPlayerView.isHLSStream(url: url) {
+            // Convert URL to custom scheme for resource loader interception
+            // Replace http:// or https:// with customscheme://
+            let urlString = url.absoluteString
+            let customUrlString: String
+            if urlString.hasPrefix("http://") {
+                customUrlString = urlString.replacingOccurrences(of: "http://", with: "\(HLSSubtitleResourceLoaderDelegate.customSchemePrefix)://")
+            } else if urlString.hasPrefix("https://") {
+                customUrlString = urlString.replacingOccurrences(of: "https://", with: "\(HLSSubtitleResourceLoaderDelegate.customSchemePrefix)://")
+            } else {
+                customUrlString = urlString
+            }
+            
+            if let customUrl = URL(string: customUrlString) {
+                finalUrl = customUrl
+                print("🎬 HLS stream with subtitles - using custom URL scheme: \(finalUrl.absoluteString)")
+            } else {
+                print("⚠️ Failed to create custom URL scheme, using original URL")
+                finalUrl = url
+            }
+        } else {
+            finalUrl = url
+        }
+        
         // Store video headers for potential use with subtitles
         if let headers = self._videoHeaders {
             print("🎬 Video asset created with headers:")
@@ -174,10 +202,22 @@ open class FullScreenVideoPlayerView: UIView {
                     : value
                 print("   \(key): \(maskedValue)")
             }
-            self.videoAsset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+            self.videoAsset = AVURLAsset(url: finalUrl, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         } else {
             print("🎬 Video asset created without headers")
-            self.videoAsset = AVURLAsset(url: url)
+            self.videoAsset = AVURLAsset(url: finalUrl)
+        }
+        
+        // Set up resource loader delegate for HLS subtitles
+        if let tracks = subtitleTracks, !tracks.isEmpty, FullScreenVideoPlayerView.isHLSStream(url: url) {
+            let bearerToken = FullScreenVideoPlayerView.extractBearerToken(from: self._videoHeaders)
+            self.hlsSubtitleResourceLoader = HLSSubtitleResourceLoaderDelegate(
+                subtitleTracks: tracks,
+                bearerToken: bearerToken,
+                originalVideoUrl: url
+            )
+            self.videoAsset.resourceLoader.setDelegate(self.hlsSubtitleResourceLoader, queue: DispatchQueue.main)
+            print("✅ Resource loader delegate set up for HLS subtitle injection")
         }
 
         self.isPlaying = false
@@ -208,7 +248,7 @@ open class FullScreenVideoPlayerView: UIView {
       // Handle multiple subtitle tracks or single subtitle
       if let tracks = _subtitleTracks, !tracks.isEmpty {
           // New API: multiple subtitle tracks
-          let isHLS = self.isHLSStream(url: self._url)
+          let isHLS = FullScreenVideoPlayerView.isHLSStream(url: self._url)
           print("   ✅ Multiple subtitle tracks detected: \(tracks.count) tracks")
           print("   📹 Is HLS stream: \(isHLS)")
           
@@ -246,7 +286,7 @@ open class FullScreenVideoPlayerView: UIView {
                   
                   // For HLS streams, tracks might not be immediately available
                   // Check if this is an HLS stream by URL extension or content type
-                  let isHLSStream = self.isHLSStream(url: self._url)
+                  let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
                   
                   if isHLSStream {
                       print("HLS stream detected - proceeding with player setup")
@@ -283,7 +323,7 @@ open class FullScreenVideoPlayerView: UIView {
         print("Loading video asset with subtitles...")
         
         // Check if this is an HLS stream
-        let isHLSStream = self.isHLSStream(url: self._url)
+        let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
         
         if isHLSStream {
             print("HLS stream detected - setting up player with subtitles")
@@ -555,9 +595,36 @@ open class FullScreenVideoPlayerView: UIView {
         }
     }
     
-    private func isHLSStream(url: URL) -> Bool {
+    private static func isHLSStream(url: URL) -> Bool {
         let urlString = url.absoluteString.lowercased()
         return urlString.contains(".m3u8") || urlString.contains("m3u8")
+    }
+    
+    /// Extracts bearer token from headers (Authorization header or custom token header)
+    private static func extractBearerToken(from headers: [String: String]?) -> String? {
+        guard let headers = headers else { return nil }
+        
+        // Check for Authorization header with Bearer token
+        if let authHeader = headers["Authorization"] ?? headers["authorization"] {
+            if authHeader.hasPrefix("Bearer ") {
+                let token = String(authHeader.dropFirst(7)) // Remove "Bearer " prefix
+                return token
+            }
+        }
+        
+        // Check for custom token headers
+        for (key, value) in headers {
+            let lowerKey = key.lowercased()
+            if lowerKey.contains("token") && !value.isEmpty {
+                // If it's already a bearer token, extract it
+                if value.hasPrefix("Bearer ") {
+                    return String(value.dropFirst(7))
+                }
+                return value
+            }
+        }
+        
+        return nil
     }
     
     private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) {
@@ -646,18 +713,21 @@ open class FullScreenVideoPlayerView: UIView {
         print("🎬 ========================================")
         print("🎬 loadAllSubtitleTracksForHLS() CALLED")
         print("🎬 ========================================")
-        print("   Checking subtitle tracks...")
-        print("   _subtitleTracks is nil: \(_subtitleTracks == nil)")
-        print("   _subtitleTracks count: \(_subtitleTracks?.count ?? 0)")
+        print("   Using resource loader delegate for HLS subtitle injection")
+        print("   Subtitle tracks count: \(_subtitleTracks?.count ?? 0)")
 
         guard let tracks = _subtitleTracks, !tracks.isEmpty else {
             print("   ❌ Guard failed - no subtitle tracks available")
-            print("      _subtitleTracks: \(_subtitleTracks?.description ?? "nil")")
             print("🎬 ========================================")
+            // Still create player without subtitles
+            self.playerItem = AVPlayerItem(asset: self.videoAsset)
+            self.player = AVPlayer(playerItem: self.playerItem)
+            self.videoPlayer.player = self.player
+            self.setupPlayer()
             return
         }
 
-        print("   ✅ Guard passed - \(tracks.count) subtitle tracks found")
+        print("   ✅ \(tracks.count) subtitle tracks will be injected via resource loader")
         print("   📋 Track details:")
         for (index, track) in tracks.enumerated() {
             if let trackId = track["id"] as? String,
@@ -669,183 +739,22 @@ open class FullScreenVideoPlayerView: UIView {
         }
         print("🎬 ========================================")
 
-        // Create player item with the original HLS asset
+        // Create player item with the HLS asset (resource loader will inject subtitles)
         print("   🎥 Creating player item and player...")
+        print("   ℹ️ Resource loader delegate is already set up and will inject subtitles automatically")
         self.playerItem = AVPlayerItem(asset: self.videoAsset)
         self.player = AVPlayer(playerItem: self.playerItem)
 
-        // CRITICAL: Assign player to videoPlayer BEFORE setting up subtitles
+        // CRITICAL: Assign player to videoPlayer BEFORE setting up
         print("   🎥 Assigning player to videoPlayer...")
         self.videoPlayer.player = self.player
 
-        // Set up the player first
+        // Set up the player
         print("   🎥 Setting up player...")
         self.setupPlayer()
 
-        // Load all subtitle tracks asynchronously
-        print("   📥 Starting to load \(tracks.count) subtitle tracks...")
-        var loadedCount = 0
-        let totalTracks = tracks.count
-
-        for (index, track) in tracks.enumerated() {
-            print("   📥 Processing track \(index + 1)/\(totalTracks)...")
-            guard let trackUrlString = track["url"] as? String,
-                  let trackUrl = URL(string: trackUrlString),
-                  let trackId = track["id"] as? String else {
-                print("      ❌ Failed to extract track info for track \(index + 1)")
-                loadedCount += 1
-                if loadedCount >= totalTracks {
-                    print("      ✅ All tracks processed (some failed), calling finishHLSSubtitleSetup()")
-                    self.finishHLSSubtitleSetup()
-                }
-                continue
-            }
-
-            print("      ✅ Track \(index + 1) info extracted: id=\(trackId), url=\(trackUrl.absoluteString)")
-
-            // Load subtitle file with proper headers for authentication
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                guard let self = self else {
-                    print("      ❌ Self is nil in async block for track \(trackId)")
-                    return
-                }
-
-                print("      🌐 Starting HTTP request for track \(trackId)...")
-
-                // Use URLSession with delegate to handle redirects and preserve headers
-                // URLSession.shared doesn't preserve custom headers through redirects
-                var request = URLRequest(url: trackUrl)
-                var headersToUse: [String: String] = [:]
-
-                // Add headers if they were provided for the video
-                // Use video headers (same headers used for video authentication)
-                if let headers = self._videoHeaders {
-                    headersToUse = headers
-                    for (key, value) in headers {
-                        request.setValue(value, forHTTPHeaderField: key)
-                    }
-                    print("      ✅ Added \(headers.count) authentication headers from video")
-                    for (key, _) in headers {
-                        let maskedValue = (key.lowercased().contains("token") || key.lowercased().contains("auth")) 
-                            ? "***" 
-                            : headers[key] ?? ""
-                        print("         Header: \(key) = \(maskedValue)")
-                    }
-                } else {
-                    print("      ⚠️ No video headers available for subtitle authentication")
-                }
-
-                // Create URLSession with delegate to preserve headers through redirects
-                let delegate = SubtitleURLSessionDelegate(headers: headersToUse)
-                let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-                print("      📡 Making HTTP request to: \(trackUrl.absoluteString)")
-                let task = session.dataTask(with: request) { [weak self] data, response, error in
-                    print("      📥 HTTP response received for track \(trackId)")
-                    guard let self = self else { return }
-
-                    if let error = error {
-                        print("      ❌ HTTP Error for track \(trackId): \(error.localizedDescription)")
-                        if let urlError = error as? URLError {
-                            print("         Error code: \(urlError.code.rawValue)")
-                            print("         Error domain: \(urlError.localizedDescription)")
-                        }
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-
-                    guard let data = data else {
-                        print("      ❌ No data received for track \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-
-                    print("      ✅ Received \(data.count) bytes for track \(trackId)")
-
-                    guard let subtitleContent = String(data: data, encoding: .utf8) else {
-                        print("      ❌ Failed to decode subtitle content as UTF-8 for track \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-
-                    print("      ✅ Decoded subtitle content (\(subtitleContent.count) characters) for track \(trackId)")
-                    
-                    // Log first 200 characters to diagnose content
-                    let preview = String(subtitleContent.prefix(200))
-                    print("      📄 Content preview (first 200 chars): \(preview)")
-
-                    // Check if we got an error response (like 401)
-                    if subtitleContent.contains("\"status\":401") || subtitleContent.contains("Unauthorized") {
-                        print("      ⚠️ Authentication failed (401) for track \(trackId)")
-                        DispatchQueue.main.async {
-                            self.subtitleTracksData[trackId] = []
-                            loadedCount += 1
-                            print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                            if loadedCount >= totalTracks {
-                                print("      ✅ All tracks processed, calling finishHLSSubtitleSetup()")
-                                self.finishHLSSubtitleSetup()
-                            }
-                        }
-                        return
-                    }
-                    
-                    // Check for other error responses
-                    if subtitleContent.contains("\"status\":") || subtitleContent.contains("\"error\":") {
-                        print("      ⚠️ Error response detected in content for track \(trackId)")
-                        print("      📄 Full error content: \(subtitleContent)")
-                    }
-
-                    let isVTT = subtitleContent.hasPrefix("WEBVTT")
-                    print("      🔍 Detected format: \(isVTT ? "WebVTT" : "SRT") for track \(trackId)")
-                    let subtitles: [(start: Double, end: Double, text: String)]
-                    if isVTT {
-                        subtitles = self.parseVTTContent(subtitleContent)
-                    } else {
-                        subtitles = self.parseSRTContent(subtitleContent)
-                    }
-
-                    print("      ✅ Parsed \(subtitles.count) subtitle entries for track \(trackId)")
-
-                    DispatchQueue.main.async {
-                        self.subtitleTracksData[trackId] = subtitles
-                        loadedCount += 1
-                        print("      📊 Loaded count: \(loadedCount)/\(totalTracks)")
-                        if loadedCount >= totalTracks {
-                            print("      ✅ All tracks loaded successfully, calling finishHLSSubtitleSetup()")
-                            self.finishHLSSubtitleSetup()
-                        }
-                    }
-                }
-
-                task.resume()
-                print("      🚀 HTTP task resumed for track \(trackId)")
-            }
-        }
-        print("   ✅ Finished setting up subtitle loading loop for all \(totalTracks) tracks")
+        // Set initial subtitle selection after player is ready
+        self.finishHLSSubtitleSetup()
     }
     
     private func finishHLSSubtitleSetup() {
@@ -854,10 +763,11 @@ open class FullScreenVideoPlayerView: UIView {
             _activeSubtitleTrackId = selectedId
         }
         
-        // Wait for player to be ready before adding subtitles
+        // Wait for player to be ready before setting initial subtitle selection
+        // Subtitles are now injected via resource loader and will appear in native iOS menu
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self else { return }
-            self.setupHLSSubtitleDisplay()
+            self.setInitialSubtitleSelection()
             
             // Auto-play for HLS streams with subtitles
             self.autoPlayIfHLSReady()
@@ -1034,7 +944,7 @@ open class FullScreenVideoPlayerView: UIView {
             self.subtitleRetryInProgress = false // Reset flag
             // For HLS, we already use loadAllSubtitleTracksForHLS directly
             // This fallback should only be for non-HLS streams
-            if self.isHLSStream(url: self.videoAsset.url) {
+            if FullScreenVideoPlayerView.isHLSStream(url: self.videoAsset.url) {
                 self.loadAllSubtitleTracksForHLS()
             } else {
                 // For non-HLS, we can't easily add external subtitles after composition fails
@@ -2764,7 +2674,7 @@ open class FullScreenVideoPlayerView: UIView {
     
     private func autoPlayIfHLSReady() {
         // Check if this is an HLS stream
-        let isHLSStream = self.isHLSStream(url: self._url)
+        let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
         
         print("🔍 autoPlayIfHLSReady called - isHLSStream: \(isHLSStream), player exists: \(self.player != nil)")
         
@@ -3003,6 +2913,10 @@ open class FullScreenVideoPlayerView: UIView {
         
         // Clean up video asset
         self.videoAsset.cancelLoading()
+        self.videoAsset.resourceLoader.setDelegate(nil, queue: nil)
+        
+        // Clean up resource loader delegate
+        self.hlsSubtitleResourceLoader = nil
         
         // Clean up audio session
         self.cleanupAudioSession()
