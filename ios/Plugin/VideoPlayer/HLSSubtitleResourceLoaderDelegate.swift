@@ -297,7 +297,13 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             // Create subtitle playlist URL with custom scheme
             let subtitlePlaylistUrl = "\(subtitlePlaylistUrlPrefix)://\(trackId).m3u8"
             
-            let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=YES,URI=\"\(subtitlePlaylistUrl)\""
+            // Check if this track should be marked as default
+            let isDefault = (track["isDefault"] as? Bool) == true
+            let defaultAttr = isDefault ? ",DEFAULT=YES" : ",DEFAULT=NO"
+            
+            // FORCED=NO explicitly marks these as optional (non-forced) subtitles
+            // This prevents the warning about non-forced-only media selection
+            let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=YES\(defaultAttr),FORCED=NO,URI=\"\(subtitlePlaylistUrl)\""
             subtitleMediaLines.append(mediaLine)
         }
         
