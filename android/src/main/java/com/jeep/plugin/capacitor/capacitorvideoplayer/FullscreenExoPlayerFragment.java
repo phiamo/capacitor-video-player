@@ -1041,7 +1041,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         .setUri(trackUri)
         .setId(track.getId())
         .setLabel(languageLabel)
-        .setRoleFlags(C.ROLE_FLAG_CAPTION)
+        .setRoleFlags(C.ROLE_FLAG_SUBTITLE)
         .setSelectionFlags(selectionFlags)
         .setLanguage(track.getLanguage())
         .build();
