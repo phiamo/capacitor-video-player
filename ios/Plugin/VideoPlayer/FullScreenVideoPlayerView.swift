@@ -172,9 +172,10 @@ open class FullScreenVideoPlayerView: UIView {
         self._smallTitle = smallTitle
         self._artwork = artwork
 
-        // For HLS streams with subtitles, use custom URL scheme to enable resource loader
+        // For HLS streams, use custom URL scheme to enable resource loader
+        // This is needed both for subtitle injection AND for adding CLOSED-CAPTIONS=NONE when no subtitles
         let finalUrl: URL
-        if let tracks = subtitleTracks, !tracks.isEmpty, FullScreenVideoPlayerView.isHLSStream(url: url) {
+        if FullScreenVideoPlayerView.isHLSStream(url: url) {
             // Convert URL to custom scheme for resource loader interception
             // Replace http:// or https:// with customscheme://
             let urlString = url.absoluteString
@@ -189,7 +190,11 @@ open class FullScreenVideoPlayerView: UIView {
             
             if let customUrl = URL(string: customUrlString) {
                 finalUrl = customUrl
-                Self.logger.debug("HLS stream with subtitles - using custom URL scheme: \(finalUrl.absoluteString, privacy: .public)")
+                if let tracks = subtitleTracks, !tracks.isEmpty {
+                    Self.logger.debug("HLS stream with subtitles - using custom URL scheme: \(finalUrl.absoluteString, privacy: .public)")
+                } else {
+                    Self.logger.debug("HLS stream without subtitles - using custom URL scheme to add CLOSED-CAPTIONS=NONE: \(finalUrl.absoluteString, privacy: .public)")
+                }
             } else {
                 Self.logger.warning("Failed to create custom URL scheme, using original URL")
                 finalUrl = url
@@ -213,9 +218,12 @@ open class FullScreenVideoPlayerView: UIView {
             self.videoAsset = AVURLAsset(url: finalUrl)
         }
         
-        // Set up resource loader delegate for HLS subtitles
-        if let tracks = subtitleTracks, FullScreenVideoPlayerView.isHLSStream(url: url) {
+        // Set up resource loader delegate for HLS streams
+        // Always create delegate for HLS streams, even without subtitles, to add CLOSED-CAPTIONS=NONE
+        if FullScreenVideoPlayerView.isHLSStream(url: url) {
             let bearerToken = FullScreenVideoPlayerView.extractBearerToken(from: self._videoHeaders)
+            // Use empty array if no subtitles, so delegate can add CLOSED-CAPTIONS=NONE
+            let tracks = subtitleTracks ?? []
             self.hlsSubtitleResourceLoader = HLSSubtitleResourceLoaderDelegate(
                 subtitleTracks: tracks,
                 bearerToken: bearerToken,
