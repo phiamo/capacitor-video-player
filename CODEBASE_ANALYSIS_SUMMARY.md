@@ -247,7 +247,7 @@ public String getFilePath(String url) {
 - HLS streaming support
 - Picture-in-Picture (iOS 14+)
 - Background playback with AVAudioSession
-- Subtitle support (WebVTT via AVPlayerViewController-Subtitles)
+- Subtitle support (WebVTT via custom implementation)
 - Orientation locking (all/portrait/landscape)
 - Custom player view controllers for orientation control
 
@@ -353,7 +353,7 @@ Then handle in `initPlayer` implementations across all platforms.
 ### Platform-Specific Features
 
 - **Android-only**: Chromecast, custom ExoPlayer UI controls
-- **iOS-only**: AVPlayerViewController-Subtitles integration
+- **iOS-only**: Custom subtitle implementation with HLS support
 - **Web-only**: Embedded mode, HLS.js integration
 
 ## Build System

@@ -365,7 +365,7 @@ open class FullScreenVideoPlayerView: UIView {
     }
     
     private func setupSubtitlesForHLS(subTitleUrl: URL) {
-        Self.logger.debug("Setting up subtitles for HLS stream using AVPlayerViewController-Subtitles...")
+        Self.logger.debug("Setting up subtitles for HLS stream...")
         
         // Create player item with the original HLS asset
         self.playerItem = AVPlayerItem(asset: self.videoAsset)
@@ -1120,8 +1120,8 @@ open class FullScreenVideoPlayerView: UIView {
             guard retryCount < maxRetries else {
                 Self.logger.error(" Max retries reached - video tracks never became available")
                 Self.logger.debug("   Video will continue playing with original player item")
-                Self.logger.debug("   Using fallback subtitle method (only first track will work)")
-                self.setupMultipleSubtitlesWithAVPlayerViewControllerSubtitles(subtitleTracks: subtitleTracks)
+                Self.logger.debug("   Using custom subtitle display fallback method")
+                self.setupCustomSubtitleDisplayForHLS(subtitleTracks: subtitleTracks)
                 return
             }
             
@@ -1152,37 +1152,6 @@ open class FullScreenVideoPlayerView: UIView {
         tryCreateComposition()
     }
     
-    /// Fallback: Uses AVPlayerViewControllerSubtitles library for external subtitles
-    /// when video tracks aren't available (rare case)
-    private func setupMultipleSubtitlesWithAVPlayerViewControllerSubtitles(subtitleTracks: [[String: Any]]) {
-        Self.logger.debug("📝 Setting up multiple subtitles using AVPlayerViewControllerSubtitles...")
-        Self.logger.debug("   ⚠️ This fallback only supports one subtitle track")
-        Self.logger.debug("   For multiple tracks, composition method should be used")
-        
-        // For now, just use the first subtitle track
-        // AVPlayerViewControllerSubtitles may need to be extended for multiple tracks
-        if let firstTrack = subtitleTracks.first,
-           let trackUrlString = firstTrack["url"] as? String {
-            
-            // Resolve URL
-            var trackUrl: URL?
-            if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
-                trackUrl = URL(string: trackUrlString)
-            } else if trackUrlString.hasPrefix("file://") {
-                trackUrl = URL(string: trackUrlString)
-            } else {
-                trackUrl = URL(fileURLWithPath: trackUrlString)
-            }
-            
-            if let subtitleUrl = trackUrl {
-                Self.logger.debug("   Using first subtitle track: \(subtitleUrl.absoluteString)")
-                self.addSubtitlesToPlayer(subTitleUrl: subtitleUrl)
-            }
-        }
-        
-        // Set initial track selection
-        self.setInitialSubtitleSelection()
-    }
     
     private func createPlayerWithSubtitles(
         videoTracks: [AVAssetTrack],
@@ -2179,7 +2148,6 @@ open class FullScreenVideoPlayerView: UIView {
     
     /// Fallback: Custom UILabel subtitle display for HLS when composition creation fails
     /// This loads all subtitle tracks, parses them, and displays using UILabel overlay
-    /// Similar to working branch approach and AVPlayerViewController-Subtitles library
     private func setupCustomSubtitleDisplayForHLS(subtitleTracks: [[String: Any]]) {
         Self.logger.debug("🎬 ========================================")
         Self.logger.debug("🎬 CUSTOM SUBTITLE DISPLAY (FALLBACK)")
@@ -2404,11 +2372,11 @@ open class FullScreenVideoPlayerView: UIView {
         }
     }
     
-    /// Sets up UILabel overlay for custom subtitle display (like working branch and AVPlayerViewController-Subtitles)
+    /// Sets up UILabel overlay for custom subtitle display
     private func setupCustomSubtitleLabel() {
         Self.logger.debug("🎨 Setting up custom subtitle UILabel overlay...")
         
-        // Create subtitle label (similar to AVPlayerViewController-Subtitles library)
+        // Create subtitle label
         let label = UILabel()
         label.textColor = UIColor.white
         label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
