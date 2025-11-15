@@ -214,7 +214,7 @@ open class FullScreenVideoPlayerView: UIView {
         }
         
         // Set up resource loader delegate for HLS subtitles
-        if let tracks = subtitleTracks, !tracks.isEmpty, FullScreenVideoPlayerView.isHLSStream(url: url) {
+        if let tracks = subtitleTracks, FullScreenVideoPlayerView.isHLSStream(url: url) {
             let bearerToken = FullScreenVideoPlayerView.extractBearerToken(from: self._videoHeaders)
             self.hlsSubtitleResourceLoader = HLSSubtitleResourceLoaderDelegate(
                 subtitleTracks: tracks,
@@ -2508,35 +2508,83 @@ open class FullScreenVideoPlayerView: UIView {
     // MARK: - Audio Session Configuration
     
     private func configureAudioSession() {
+        let audioSession = AVAudioSession.sharedInstance()
+        
+        // Step 1: Try to deactivate any existing session (ignore errors if not active)
+        Self.logger.debug(" Audio session step 1: Attempting to deactivate existing session")
         do {
-            let audioSession = AVAudioSession.sharedInstance()
-            
-            // Deactivate any existing session first to prevent conflicts
             try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-            
-            // Wait a moment for deactivation to complete
-            Thread.sleep(forTimeInterval: 0.1)
-            
-            // Configure for video playback to prevent HAL errors
-            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetoothHFP, .mixWithOthers])
-            
-            // Set preferred sample rate to reduce processing load
-            try audioSession.setPreferredSampleRate(44100.0)
-            
-            // Set preferred buffer duration to reduce latency and prevent HAL errors
-            try audioSession.setPreferredIOBufferDuration(0.02)
-            
-            // Disable audio enhancement features that cause errors
-            if #available(iOS 15.0, *) {
-                try audioSession.setPrefersNoInterruptionsFromSystemAlerts(true)
+            Self.logger.debug(" Audio session step 1: Successfully deactivated")
+        } catch {
+            Self.logger.debug(" Audio session step 1: Deactivation skipped (session may not be active): \(error.localizedDescription, privacy: .public)")
+        }
+        
+        // Step 2: Configure category
+        // Note: .mixWithOthers is incompatible with .playback category (playback is exclusive)
+        Self.logger.debug(" Audio session step 2: Setting category to .playback with .moviePlayback mode")
+        do {
+            // Try with AirPlay and Bluetooth support (without mixWithOthers)
+            try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetoothHFP])
+            Self.logger.debug(" Audio session step 2: Category set successfully with AirPlay and Bluetooth")
+        } catch {
+            Self.logger.warning(" Audio session step 2: First attempt failed, trying with minimal options: \(error.localizedDescription, privacy: .public)")
+            // Try with just AirPlay
+            do {
+                try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
+                Self.logger.debug(" Audio session step 2: Category set successfully with AirPlay only")
+            } catch {
+                Self.logger.warning(" Audio session step 2: Second attempt failed, trying with no options: \(error.localizedDescription, privacy: .public)")
+                // Try with no options
+                do {
+                    try audioSession.setCategory(.playback, mode: .moviePlayback, options: [])
+                    Self.logger.debug(" Audio session step 2: Category set successfully with no options")
+                } catch {
+                    Self.logger.error(" Audio session step 2 FAILED (setCategory): All attempts failed - \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
+                    self.configureAudioSessionFallback()
+                    return
+                }
             }
-            
-            // Activate the session with proper options
+        }
+        
+        // Step 3: Set preferred sample rate
+        Self.logger.debug(" Audio session step 3: Setting preferred sample rate to 44100.0")
+        do {
+            try audioSession.setPreferredSampleRate(44100.0)
+            Self.logger.debug(" Audio session step 3: Sample rate set successfully")
+        } catch {
+            Self.logger.warning(" Audio session step 3 WARNING (setPreferredSampleRate): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
+            // Continue - this is not critical
+        }
+        
+        // Step 4: Set preferred buffer duration
+        Self.logger.debug(" Audio session step 4: Setting preferred I/O buffer duration to 0.02")
+        do {
+            try audioSession.setPreferredIOBufferDuration(0.02)
+            Self.logger.debug(" Audio session step 4: Buffer duration set successfully")
+        } catch {
+            Self.logger.warning(" Audio session step 4 WARNING (setPreferredIOBufferDuration): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
+            // Continue - this is not critical
+        }
+        
+        // Step 5: Disable interruptions (iOS 15+)
+        if #available(iOS 15.0, *) {
+            Self.logger.debug(" Audio session step 5: Setting prefersNoInterruptionsFromSystemAlerts")
+            do {
+                try audioSession.setPrefersNoInterruptionsFromSystemAlerts(true)
+                Self.logger.debug(" Audio session step 5: Interruptions preference set successfully")
+            } catch {
+                Self.logger.warning(" Audio session step 5 WARNING (setPrefersNoInterruptionsFromSystemAlerts): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
+                // Continue - this is not critical
+            }
+        }
+        
+        // Step 6: Activate the session
+        Self.logger.debug(" Audio session step 6: Activating audio session")
+        do {
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
-            
             Self.logger.notice(" Audio session configured for video playback")
         } catch {
-            Self.logger.error(" Failed to configure audio session: \(error)")
+            Self.logger.error(" Audio session step 6 FAILED (setActive): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
             // Fallback configuration
             self.configureAudioSessionFallback()
         }

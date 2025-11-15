@@ -270,57 +270,76 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         let lines = playlistString.components(separatedBy: .newlines)
         var modifiedLines: [String] = []
         
+        // Check if we have subtitle tracks
+        let hasSubtitles = !subtitleTracks.isEmpty
+        
         // Process each line
         for line in lines {
-            modifiedLines.append(line)
+            var modifiedLine = line
             
-            // If this is a stream info line, add subtitle group attribute
+            // If this is a stream info line, modify it based on subtitle availability
             if line.hasPrefix("#EXT-X-STREAM-INF:") {
-                // Check if SUBTITLES attribute already exists
-                if !line.contains("SUBTITLES=") {
-                    modifiedLines[modifiedLines.count - 1] = line + ",SUBTITLES=\"subs\""
+                if hasSubtitles {
+                    // Add subtitle group attribute if subtitles exist
+                    if !line.contains("SUBTITLES=") {
+                        modifiedLine = line + ",SUBTITLES=\"subs\""
+                    }
+                } else {
+                    // No subtitles - add CLOSED-CAPTIONS=NONE to prevent "Unknown CC" option
+                    // This tells iOS explicitly that there are no closed captions
+                    if !line.contains("CLOSED-CAPTIONS=") {
+                        modifiedLine = line + ",CLOSED-CAPTIONS=NONE"
+                        Self.logger.debug("Added CLOSED-CAPTIONS=NONE to stream info (no subtitles available)")
+                    }
                 }
             }
+            
+            modifiedLines.append(modifiedLine)
         }
         
-        // Add subtitle media declarations before the first stream
-        var subtitleMediaLines: [String] = []
-        for track in subtitleTracks {
-            guard let trackId = track["id"] as? String,
-                  let language = track["language"] as? String else {
-                continue
+        // Only add subtitle media declarations if we have subtitles
+        if hasSubtitles {
+            // Add subtitle media declarations before the first stream
+            var subtitleMediaLines: [String] = []
+            for track in subtitleTracks {
+                guard let trackId = track["id"] as? String,
+                      let language = track["language"] as? String else {
+                    continue
+                }
+                
+                // Get title from track, fallback to name or language
+                let title = (track["title"] as? String) ?? (track["name"] as? String) ?? language
+                
+                // Create subtitle playlist URL with custom scheme
+                let subtitlePlaylistUrl = "\(subtitlePlaylistUrlPrefix)://\(trackId).m3u8"
+                
+                // Check if this track should be marked as default
+                let isDefault = (track["isDefault"] as? Bool) == true
+                let defaultAttr = isDefault ? ",DEFAULT=YES" : ",DEFAULT=NO"
+                
+                // FORCED=NO explicitly marks these as optional (non-forced) subtitles
+                // This prevents the warning about non-forced-only media selection
+                let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=YES\(defaultAttr),FORCED=NO,URI=\"\(subtitlePlaylistUrl)\""
+                subtitleMediaLines.append(mediaLine)
             }
             
-            // Get title from track, fallback to name or language
-            let title = (track["title"] as? String) ?? (track["name"] as? String) ?? language
-            
-            // Create subtitle playlist URL with custom scheme
-            let subtitlePlaylistUrl = "\(subtitlePlaylistUrlPrefix)://\(trackId).m3u8"
-            
-            // Check if this track should be marked as default
-            let isDefault = (track["isDefault"] as? Bool) == true
-            let defaultAttr = isDefault ? ",DEFAULT=YES" : ",DEFAULT=NO"
-            
-            // FORCED=NO explicitly marks these as optional (non-forced) subtitles
-            // This prevents the warning about non-forced-only media selection
-            let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=YES\(defaultAttr),FORCED=NO,URI=\"\(subtitlePlaylistUrl)\""
-            subtitleMediaLines.append(mediaLine)
-        }
-        
-        // Insert subtitle media lines before the first stream
-        var insertIndex = -1
-        for (index, line) in modifiedLines.enumerated() {
-            if line.hasPrefix("#EXT-X-STREAM-INF:") {
-                insertIndex = index
-                break
+            // Insert subtitle media lines before the first stream
+            var insertIndex = -1
+            for (index, line) in modifiedLines.enumerated() {
+                if line.hasPrefix("#EXT-X-STREAM-INF:") {
+                    insertIndex = index
+                    break
+                }
             }
-        }
-        
-        if insertIndex >= 0 {
-            modifiedLines.insert(contentsOf: subtitleMediaLines, at: insertIndex)
+            
+            if insertIndex >= 0 {
+                modifiedLines.insert(contentsOf: subtitleMediaLines, at: insertIndex)
+            } else {
+                // If no stream found, append at the end
+                modifiedLines.append(contentsOf: subtitleMediaLines)
+            }
         } else {
-            // If no stream found, append at the end
-            modifiedLines.append(contentsOf: subtitleMediaLines)
+            Self.logger.debug("No subtitle tracks available - CLOSED-CAPTIONS=NONE added to prevent alternate track button")
         }
         
         return modifiedLines.joined(separator: "\n")
