@@ -30,8 +30,8 @@ extension UIView {
             let insets = self.safeAreaInsets
             topInset = insets.top
             bottomInset = insets.bottom
-            Self.logger.trace("Top: \(topInset, privacy: .public)")
-            Self.logger.trace("bottom: \(bottomInset, privacy: .public)")
+            Self.logger.debug("Top: \(topInset, privacy: .public)")
+            Self.logger.debug("bottom: \(bottomInset, privacy: .public)")
         }
 
         translatesAutoresizingMaskIntoConstraints = false

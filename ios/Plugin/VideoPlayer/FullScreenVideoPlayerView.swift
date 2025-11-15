@@ -205,7 +205,7 @@ open class FullScreenVideoPlayerView: UIView {
                 let maskedValue = (key.lowercased().contains("token") || key.lowercased().contains("auth")) 
                     ? "***\(String(value.suffix(4)))" 
                     : value
-                Self.logger.trace("Header \(key, privacy: .public): \(maskedValue, privacy: .public)")
+                Self.logger.debug("Header \(key, privacy: .public): \(maskedValue, privacy: .public)")
             }
             self.videoAsset = AVURLAsset(url: finalUrl, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         } else {
@@ -244,7 +244,7 @@ open class FullScreenVideoPlayerView: UIView {
               let trackId = track["id"] as? String ?? "nil"
               let trackUrl = track["url"] as? String ?? "nil"
               let trackLang = track["language"] as? String ?? "nil"
-              Self.logger.trace("Track \(index + 1, privacy: .public): id=\(trackId, privacy: .public), url=\(trackUrl, privacy: .public), lang=\(trackLang, privacy: .public)")
+              Self.logger.debug("Track \(index + 1, privacy: .public): id=\(trackId, privacy: .public), url=\(trackUrl, privacy: .public), lang=\(trackLang, privacy: .public)")
           }
       } else {
           Self.logger.warning("_subtitleTracks is nil")
@@ -739,8 +739,8 @@ open class FullScreenVideoPlayerView: UIView {
             if let trackId = track["id"] as? String,
                let trackUrl = track["url"] as? String,
                let trackLang = track["language"] as? String {
-                Self.logger.trace("Track \(index + 1, privacy: .public): \(trackId, privacy: .public) (\(trackLang, privacy: .public))")
-                Self.logger.trace("URL: \(trackUrl, privacy: .public)")
+                Self.logger.debug("Track \(index + 1, privacy: .public): \(trackId, privacy: .public) (\(trackLang, privacy: .public))")
+                Self.logger.debug("URL: \(trackUrl, privacy: .public)")
             }
         }
         Self.logger.debug("========================================")

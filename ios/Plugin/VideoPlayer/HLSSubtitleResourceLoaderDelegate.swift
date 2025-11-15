@@ -48,7 +48,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         let requestString = loadingRequest.request.url?.absoluteString ?? ""
         let dataRequest = loadingRequest.dataRequest
         
-        Self.logger.trace("Resource loader intercepted request: \(requestString, privacy: .public)")
+        Self.logger.debug("Resource loader intercepted request: \(requestString, privacy: .public)")
         
         // Handle subtitle playlist requests
         if requestString.hasPrefix(subtitlePlaylistUrlPrefix) {
@@ -175,7 +175,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         let urlComponents = requestString.replacingOccurrences(of: subtitlePlaylistUrlPrefix + "://", with: "")
         let trackIdentifier = urlComponents.components(separatedBy: ".").first ?? ""
         
-        Self.logger.trace("Track identifier: \(trackIdentifier, privacy: .public)")
+        Self.logger.debug("Track identifier: \(trackIdentifier, privacy: .public)")
         
         // Find matching subtitle track
         guard let track = subtitleTracks.first(where: { track in
@@ -205,10 +205,10 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                     urlComponents.queryItems = queryItems
                     if let newUrl = urlComponents.url {
                         subtitleUrl = newUrl
-                        Self.logger.trace("Appended bearer token to subtitle URL")
+                        Self.logger.debug("Appended bearer token to subtitle URL")
                     }
                 } else {
-                    Self.logger.trace("Bearer token already present in URL")
+                    Self.logger.debug("Bearer token already present in URL")
                 }
             } else {
                 // Fallback: append as query string manually
@@ -216,7 +216,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 if let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
                    let newUrl = URL(string: "\(subtitleUrl.absoluteString)\(separator)bearer=\(encodedToken)") {
                     subtitleUrl = newUrl
-                    Self.logger.trace("Appended bearer token to subtitle URL (fallback method)")
+                    Self.logger.debug("Appended bearer token to subtitle URL (fallback method)")
                 }
             }
         }
