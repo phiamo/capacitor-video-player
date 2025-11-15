@@ -48,8 +48,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         let requestString = loadingRequest.request.url?.absoluteString ?? ""
         let dataRequest = loadingRequest.dataRequest
         
-        Self.logger.debug("Resource loader intercepted request: \(requestString, privacy: .public)")
-        
         // Handle subtitle playlist requests
         if requestString.hasPrefix(subtitlePlaylistUrlPrefix) {
             return handleSubtitlePlaylistRequest(loadingRequest: loadingRequest)
@@ -70,7 +68,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                                    (dataRequest.requestedLength < 50000) // Master playlists are typically small (< 50KB)
             
             if isMasterPlaylist {
-                Self.logger.debug("Detected master playlist request")
                 return handleMasterPlaylistRequest(loadingRequest: loadingRequest)
             }
         }
@@ -82,8 +79,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     // MARK: - Master Playlist Handling
     
     private func handleMasterPlaylistRequest(loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
-        Self.logger.debug("Handling master playlist request")
-        
         // Remove custom scheme to get original URL
         guard let requestUrlString = loadingRequest.request.url?.absoluteString else {
             Self.logger.error("Failed to get request URL")
@@ -138,8 +133,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 return
             }
             
-            Self.logger.notice("Master playlist fetched, injecting subtitle tracks")
-            
             // Inject subtitle tracks into the playlist
             let modifiedPlaylist = self.injectSubtitlesIntoPlaylist(playlistString: playlistString)
             
@@ -147,7 +140,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             if let modifiedData = modifiedPlaylist.data(using: .utf8) {
                 loadingRequest.dataRequest?.respond(with: modifiedData)
                 loadingRequest.finishLoading()
-                Self.logger.notice("Master playlist modified and sent")
             } else {
                 loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             }
@@ -160,8 +152,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     // MARK: - Subtitle Playlist Handling
     
     private func handleSubtitlePlaylistRequest(loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
-        Self.logger.debug("Handling subtitle playlist request")
-        
         guard let requestUrl = loadingRequest.request.url else {
             Self.logger.error("Invalid subtitle playlist request URL")
             loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
@@ -174,8 +164,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         // Format: customschemeSubtitlePlaylist://<language>.m3u8
         let urlComponents = requestString.replacingOccurrences(of: subtitlePlaylistUrlPrefix + "://", with: "")
         let trackIdentifier = urlComponents.components(separatedBy: ".").first ?? ""
-        
-        Self.logger.debug("Track identifier: \(trackIdentifier, privacy: .public)")
         
         // Find matching subtitle track
         guard let track = subtitleTracks.first(where: { track in
@@ -205,10 +193,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                     urlComponents.queryItems = queryItems
                     if let newUrl = urlComponents.url {
                         subtitleUrl = newUrl
-                        Self.logger.debug("Appended bearer token to subtitle URL")
                     }
-                } else {
-                    Self.logger.debug("Bearer token already present in URL")
                 }
             } else {
                 // Fallback: append as query string manually
@@ -216,12 +201,9 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 if let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
                    let newUrl = URL(string: "\(subtitleUrl.absoluteString)\(separator)bearer=\(encodedToken)") {
                     subtitleUrl = newUrl
-                    Self.logger.debug("Appended bearer token to subtitle URL (fallback method)")
                 }
             }
         }
-        
-        Self.logger.debug("Fetching subtitle from: \(subtitleUrl.absoluteString, privacy: .public)")
         
         // Fetch subtitle file
         var request = URLRequest(url: subtitleUrl)
@@ -245,8 +227,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 return
             }
             
-            Self.logger.notice("Subtitle content fetched (\(data.count, privacy: .public) bytes)")
-            
             // Create HLS subtitle playlist from VTT/SRT content
             let playlist = self.createSubtitlePlaylistFromVTT(vttContent: subtitleContent, subtitleUrl: subtitleUrl)
             
@@ -254,7 +234,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             if let playlistData = playlist.data(using: .utf8) {
                 loadingRequest.dataRequest?.respond(with: playlistData)
                 loadingRequest.finishLoading()
-                Self.logger.notice("Subtitle playlist created and sent")
             } else {
                 loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
             }
@@ -289,7 +268,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                     // This tells iOS explicitly that there are no closed captions
                     if !line.contains("CLOSED-CAPTIONS=") {
                         modifiedLine = line + ",CLOSED-CAPTIONS=NONE"
-                        Self.logger.debug("Added CLOSED-CAPTIONS=NONE to stream info (no subtitles available)")
                     }
                 }
             }
@@ -338,8 +316,6 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 // If no stream found, append at the end
                 modifiedLines.append(contentsOf: subtitleMediaLines)
             }
-        } else {
-            Self.logger.debug("No subtitle tracks available - CLOSED-CAPTIONS=NONE added to prevent alternate track button")
         }
         
         return modifiedLines.joined(separator: "\n")

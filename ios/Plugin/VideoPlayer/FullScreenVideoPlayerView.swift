@@ -190,11 +190,6 @@ open class FullScreenVideoPlayerView: UIView {
             
             if let customUrl = URL(string: customUrlString) {
                 finalUrl = customUrl
-                if let tracks = subtitleTracks, !tracks.isEmpty {
-                    Self.logger.debug("HLS stream with subtitles - using custom URL scheme: \(finalUrl.absoluteString, privacy: .public)")
-                } else {
-                    Self.logger.debug("HLS stream without subtitles - using custom URL scheme to add CLOSED-CAPTIONS=NONE: \(finalUrl.absoluteString, privacy: .public)")
-                }
             } else {
                 Self.logger.warning("Failed to create custom URL scheme, using original URL")
                 finalUrl = url
@@ -205,16 +200,8 @@ open class FullScreenVideoPlayerView: UIView {
         
         // Store video headers for potential use with subtitles
         if let headers = self._videoHeaders {
-            Self.logger.debug("Video asset created with headers")
-            for (key, value) in headers {
-                let maskedValue = (key.lowercased().contains("token") || key.lowercased().contains("auth")) 
-                    ? "***\(String(value.suffix(4)))" 
-                    : value
-                Self.logger.debug("Header \(key, privacy: .public): \(maskedValue, privacy: .public)")
-            }
             self.videoAsset = AVURLAsset(url: finalUrl, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         } else {
-            Self.logger.debug("Video asset created without headers")
             self.videoAsset = AVURLAsset(url: finalUrl)
         }
         
@@ -230,7 +217,6 @@ open class FullScreenVideoPlayerView: UIView {
                 originalVideoUrl: url
             )
             self.videoAsset.resourceLoader.setDelegate(self.hlsSubtitleResourceLoader, queue: DispatchQueue.main)
-            Self.logger.notice("Resource loader delegate set up for HLS subtitle injection")
         }
 
         self.isPlaying = false
@@ -242,33 +228,12 @@ open class FullScreenVideoPlayerView: UIView {
     // swiftlint:disable function_body_length
     // swiftlint:disable cyclomatic_complexity
   private func initialize() {
-      Self.logger.debug("========================================")
-      Self.logger.debug("INITIALIZE() CALLED")
-      Self.logger.debug("Video URL: \(self._url.absoluteString, privacy: .public)")
-      Self.logger.debug("Subtitle tracks count: \(self._subtitleTracks?.count ?? 0, privacy: .public)")
-      if let tracks = self._subtitleTracks {
-          Self.logger.debug("Subtitle tracks details:")
-          for (index, track) in tracks.enumerated() {
-              let trackId = track["id"] as? String ?? "nil"
-              let trackUrl = track["url"] as? String ?? "nil"
-              let trackLang = track["language"] as? String ?? "nil"
-              Self.logger.debug("Track \(index + 1, privacy: .public): id=\(trackId, privacy: .public), url=\(trackUrl, privacy: .public), lang=\(trackLang, privacy: .public)")
-          }
-      } else {
-          Self.logger.warning("_subtitleTracks is nil")
-      }
-      Self.logger.debug("Single subtitle URL: \(self._stUrl?.absoluteString ?? "nil", privacy: .public)")
-      Self.logger.debug("========================================")
-      
       // Handle multiple subtitle tracks or single subtitle
       if let tracks = self._subtitleTracks, !tracks.isEmpty {
           // New API: multiple subtitle tracks
           let isHLS = FullScreenVideoPlayerView.isHLSStream(url: self._url)
-          Self.logger.notice("Multiple subtitle tracks detected: \(tracks.count, privacy: .public) tracks")
-          Self.logger.debug("Is HLS stream: \(isHLS, privacy: .public)")
           
           if isHLS {
-              Self.logger.debug("Calling loadAllSubtitleTracksForHLS()")
               self.loadAllSubtitleTracksForHLS()
           } else {
               // Non-HLS: Load tracks first, then create composition
@@ -725,14 +690,7 @@ open class FullScreenVideoPlayerView: UIView {
     // MARK: - Multiple Subtitle Tracks Support
     
     private func loadAllSubtitleTracksForHLS() {
-        Self.logger.debug("========================================")
-        Self.logger.debug("loadAllSubtitleTracksForHLS() CALLED")
-        Self.logger.debug("Using resource loader delegate for HLS subtitle injection")
-        Self.logger.debug("Subtitle tracks count: \(self._subtitleTracks?.count ?? 0, privacy: .public)")
-
         guard let tracks = self._subtitleTracks, !tracks.isEmpty else {
-            Self.logger.warning("Guard failed - no subtitle tracks available")
-            Self.logger.debug("========================================")
             // Still create player without subtitles
             self.playerItem = AVPlayerItem(asset: self.videoAsset)
             self.player = AVPlayer(playerItem: self.playerItem)
@@ -741,30 +699,10 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
-        Self.logger.notice("\(tracks.count, privacy: .public) subtitle tracks will be injected via resource loader")
-        Self.logger.debug("Track details:")
-        for (index, track) in tracks.enumerated() {
-            if let trackId = track["id"] as? String,
-               let trackUrl = track["url"] as? String,
-               let trackLang = track["language"] as? String {
-                Self.logger.debug("Track \(index + 1, privacy: .public): \(trackId, privacy: .public) (\(trackLang, privacy: .public))")
-                Self.logger.debug("URL: \(trackUrl, privacy: .public)")
-            }
-        }
-        Self.logger.debug("========================================")
-
         // Create player item with the HLS asset (resource loader will inject subtitles)
-        Self.logger.debug("Creating player item and player")
-        Self.logger.debug("Resource loader delegate is already set up and will inject subtitles automatically")
         self.playerItem = AVPlayerItem(asset: self.videoAsset)
         self.player = AVPlayer(playerItem: self.playerItem)
-
-        // CRITICAL: Assign player to videoPlayer BEFORE setting up
-        Self.logger.debug("Assigning player to videoPlayer")
         self.videoPlayer.player = self.player
-
-        // Set up the player
-        Self.logger.debug("Setting up player")
         self.setupPlayer()
 
         // Set initial subtitle selection after player is ready
@@ -1979,28 +1917,18 @@ open class FullScreenVideoPlayerView: UIView {
     }
     
     private func setInitialSubtitleSelection() {
-        Self.logger.debug("🎬 setInitialSubtitleSelection called")
         guard let playerItem = self.playerItem else {
-            Self.logger.debug("   ⚠️ playerItem is nil, cannot set initial subtitle selection")
             return
         }
         
-        Self.logger.debug("   📊 Player item status: \(playerItem.status.rawValue)")
-        Self.logger.debug("   📊 Selected subtitle ID: \(self._selectedSubtitleId ?? "nil")")
-        Self.logger.debug("   📊 Subtitle tracks count: \(self._subtitleTracks?.count ?? 0)")
-        
         // Wait for player item to be ready before selecting track
         if playerItem.status == .readyToPlay {
-            Self.logger.debug("   ✅ Player item is ready, selecting initial track immediately")
             self.selectInitialTrack()
         } else {
-            Self.logger.debug("   ⏳ Player item not ready yet, observing status...")
             // Observe status and select when ready
             self.itemStatusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
                 guard let self = self else { return }
-                Self.logger.debug("   📊 Player item status changed to: \(item.status.rawValue)")
                 if item.status == .readyToPlay {
-                    Self.logger.debug("   ✅ Player item is now ready, selecting initial track")
                     self.selectInitialTrack()
                 }
             }
@@ -2518,81 +2446,45 @@ open class FullScreenVideoPlayerView: UIView {
     private func configureAudioSession() {
         let audioSession = AVAudioSession.sharedInstance()
         
-        // Step 1: Try to deactivate any existing session (ignore errors if not active)
-        Self.logger.debug(" Audio session step 1: Attempting to deactivate existing session")
-        do {
-            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-            Self.logger.debug(" Audio session step 1: Successfully deactivated")
-        } catch {
-            Self.logger.debug(" Audio session step 1: Deactivation skipped (session may not be active): \(error.localizedDescription, privacy: .public)")
-        }
+        // Try to deactivate any existing session (ignore errors if not active)
+        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
         
-        // Step 2: Configure category
-        // Note: .mixWithOthers is incompatible with .playback category (playback is exclusive)
-        Self.logger.debug(" Audio session step 2: Setting category to .playback with .moviePlayback mode")
+        // Configure category - try progressively simpler configurations
         do {
             // Try with AirPlay and Bluetooth support (without mixWithOthers)
             try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetoothHFP])
-            Self.logger.debug(" Audio session step 2: Category set successfully with AirPlay and Bluetooth")
         } catch {
-            Self.logger.warning(" Audio session step 2: First attempt failed, trying with minimal options: \(error.localizedDescription, privacy: .public)")
             // Try with just AirPlay
             do {
                 try audioSession.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
-                Self.logger.debug(" Audio session step 2: Category set successfully with AirPlay only")
             } catch {
-                Self.logger.warning(" Audio session step 2: Second attempt failed, trying with no options: \(error.localizedDescription, privacy: .public)")
                 // Try with no options
                 do {
                     try audioSession.setCategory(.playback, mode: .moviePlayback, options: [])
-                    Self.logger.debug(" Audio session step 2: Category set successfully with no options")
                 } catch {
-                    Self.logger.error(" Audio session step 2 FAILED (setCategory): All attempts failed - \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
+                    Self.logger.error("Failed to configure audio session category: \(error.localizedDescription, privacy: .public)")
                     self.configureAudioSessionFallback()
                     return
                 }
             }
         }
         
-        // Step 3: Set preferred sample rate
-        Self.logger.debug(" Audio session step 3: Setting preferred sample rate to 44100.0")
-        do {
-            try audioSession.setPreferredSampleRate(44100.0)
-            Self.logger.debug(" Audio session step 3: Sample rate set successfully")
-        } catch {
-            Self.logger.warning(" Audio session step 3 WARNING (setPreferredSampleRate): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
-            // Continue - this is not critical
-        }
+        // Set preferred sample rate (non-critical, continue on error)
+        try? audioSession.setPreferredSampleRate(44100.0)
         
-        // Step 4: Set preferred buffer duration
-        Self.logger.debug(" Audio session step 4: Setting preferred I/O buffer duration to 0.02")
-        do {
-            try audioSession.setPreferredIOBufferDuration(0.02)
-            Self.logger.debug(" Audio session step 4: Buffer duration set successfully")
-        } catch {
-            Self.logger.warning(" Audio session step 4 WARNING (setPreferredIOBufferDuration): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
-            // Continue - this is not critical
-        }
+        // Set preferred buffer duration (non-critical, continue on error)
+        try? audioSession.setPreferredIOBufferDuration(0.02)
         
-        // Step 5: Disable interruptions (iOS 15+)
+        // Disable interruptions (iOS 15+, non-critical)
         if #available(iOS 15.0, *) {
-            Self.logger.debug(" Audio session step 5: Setting prefersNoInterruptionsFromSystemAlerts")
-            do {
-                try audioSession.setPrefersNoInterruptionsFromSystemAlerts(true)
-                Self.logger.debug(" Audio session step 5: Interruptions preference set successfully")
-            } catch {
-                Self.logger.warning(" Audio session step 5 WARNING (setPrefersNoInterruptionsFromSystemAlerts): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
-                // Continue - this is not critical
-            }
+            try? audioSession.setPrefersNoInterruptionsFromSystemAlerts(true)
         }
         
-        // Step 6: Activate the session
-        Self.logger.debug(" Audio session step 6: Activating audio session")
+        // Activate the session
         do {
             try audioSession.setActive(true, options: [.notifyOthersOnDeactivation])
-            Self.logger.notice(" Audio session configured for video playback")
         } catch {
-            Self.logger.error(" Audio session step 6 FAILED (setActive): \(error.localizedDescription, privacy: .public) - Error code: \((error as NSError).code)")
+            Self.logger.error("Failed to activate audio session: \(error.localizedDescription, privacy: .public)")
             // Fallback configuration
             self.configureAudioSessionFallback()
         }
@@ -2648,10 +2540,7 @@ open class FullScreenVideoPlayerView: UIView {
         // Check if this is an HLS stream
         let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
         
-        Self.logger.debug("🔍 autoPlayIfHLSReady called - isHLSStream: \(isHLSStream), player exists: \(self.player != nil)")
-        
         if isHLSStream {
-            Self.logger.debug("🎬 HLS stream ready - starting auto-play")
             
             // Small delay to ensure everything is properly set up
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
