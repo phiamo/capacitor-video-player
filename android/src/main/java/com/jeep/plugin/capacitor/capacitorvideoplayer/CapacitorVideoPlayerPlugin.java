@@ -236,18 +236,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
             // Get selected subtitle ID
             if (call.getData().has("selectedSubtitleId")) {
                 selectedSubtitleId = call.getString("selectedSubtitleId");
-            } else if (!subtitleTracks.isEmpty()) {
-                // Find default track or use first track
-                for (SubtitleTrack track : subtitleTracks) {
-                    if (track.isDefault()) {
-                        selectedSubtitleId = track.getId();
-                        break;
-                    }
-                }
-                if (selectedSubtitleId == null) {
-                    selectedSubtitleId = subtitleTracks.get(0).getId();
-                }
-            }
+            } 
             
             subTitleOptions = new JSObject();
             if (call.getData().has("subtitleOptions")) {

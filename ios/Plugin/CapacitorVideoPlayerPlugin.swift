@@ -211,18 +211,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
             // Get selected subtitle ID
             if let selectedId = call.options["selectedSubtitleId"] as? String {
                 selectedSubtitleId = selectedId
-            } else if !subtitleTracks.isEmpty {
-                // Find default track or use first track
-                for track in subtitleTracks {
-                    if let isDefault = track["isDefault"] as? Bool, isDefault {
-                        selectedSubtitleId = track["id"] as? String
-                        break
-                    }
-                }
-                if selectedSubtitleId == nil {
-                    selectedSubtitleId = subtitleTracks[0]["id"] as? String
-                }
-            }
+            } 
             
             // Legacy single subtitle for backward compatibility
             var subTitlePath: String = ""
@@ -720,7 +709,6 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
 
         if self.mode == "fullscreen" && self.fsPlayerId == playerId {
             if let playerView = self.videoPlayerFullScreenView {
-                //34567890123456789012345678901234567890
                 DispatchQueue.main.async {
                     playerView.setRate(rate: self.videoRate)
                     call.resolve([ "result": true, "method": "setRate",

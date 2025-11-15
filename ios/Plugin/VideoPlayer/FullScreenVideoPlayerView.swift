@@ -2016,6 +2016,7 @@ open class FullScreenVideoPlayerView: UIView {
             Self.logger.debug("   Option \(index): lang=\(option.extendedLanguageTag ?? "nil"), locale=\(option.locale?.identifier ?? "nil"), displayName=\(option.displayName)")
         }
         
+        // Only select a subtitle if explicitly requested via _selectedSubtitleId
         if let selectedId = self._selectedSubtitleId {
             Self.logger.debug("🎯 Attempting to select track by ID: \(selectedId)")
             // Find matching option by language or track ID
@@ -2039,68 +2040,10 @@ open class FullScreenVideoPlayerView: UIView {
                 for (idx, opt) in mediaSelectionGroup.options.enumerated() {
                     Self.logger.debug("      [\(idx)] lang=\(opt.extendedLanguageTag ?? "nil"), locale=\(opt.locale?.identifier ?? "nil"), displayName=\(opt.displayName)")
                 }
-                // Try selecting first available option as fallback
-                if let firstOption = mediaSelectionGroup.options.first {
-                    playerItem.select(firstOption, in: mediaSelectionGroup)
-                    Self.logger.debug("🔄 Fallback: Selected first available subtitle option: \(firstOption.displayName)")
-                }
-            }
-        } else if let defaultTrack = self._subtitleTracks?.first(where: { ($0["isDefault"] as? Bool) == true }),
-                  let defaultId = defaultTrack["id"] as? String,
-                  let defaultLanguage = defaultTrack["language"] as? String {
-            Self.logger.debug("🎯 Attempting to select default track: \(defaultId) (\(defaultLanguage))")
-            // Try matching by language first
-            let options = mediaSelectionGroup.options.filter { option in
-                option.extendedLanguageTag == defaultLanguage ||
-                option.locale?.languageCode == defaultLanguage ||
-                option.extendedLanguageTag == defaultId ||
-                option.locale?.languageCode == defaultId ||
-                option.displayName.contains(defaultId)
-            }
-            
-            if let option = options.first {
-                playerItem.select(option, in: mediaSelectionGroup)
-                Self.logger.notice(" Selected default subtitle track: \(defaultId) (lang: \(option.extendedLanguageTag ?? "nil"))")
-            } else {
-                Self.logger.error(" Could not find default subtitle option")
-                // Try selecting first available option as fallback
-                if let firstOption = mediaSelectionGroup.options.first {
-                    playerItem.select(firstOption, in: mediaSelectionGroup)
-                    Self.logger.debug("🔄 Fallback: Selected first available subtitle option")
-                }
-            }
-        } else if let firstTrack = self._subtitleTracks?.first,
-                  let firstId = firstTrack["id"] as? String,
-                  let firstLanguage = firstTrack["language"] as? String {
-            Self.logger.debug("🎯 Attempting to select first track: \(firstId) (\(firstLanguage))")
-            // Try matching by language first
-            let options = mediaSelectionGroup.options.filter { option in
-                option.extendedLanguageTag == firstLanguage ||
-                option.locale?.languageCode == firstLanguage ||
-                option.extendedLanguageTag == firstId ||
-                option.locale?.languageCode == firstId ||
-                option.displayName.contains(firstId)
-            }
-            
-            if let option = options.first {
-                playerItem.select(option, in: mediaSelectionGroup)
-                Self.logger.notice(" Selected first subtitle track: \(firstId) (lang: \(option.extendedLanguageTag ?? "nil"))")
-            } else {
-                Self.logger.error(" Could not find first subtitle option")
-                // Try selecting first available option as fallback
-                if let firstOption = mediaSelectionGroup.options.first {
-                    playerItem.select(firstOption, in: mediaSelectionGroup)
-                    Self.logger.debug("🔄 Fallback: Selected first available subtitle option")
-                }
+                Self.logger.debug("   No subtitle selected - letting system decide")
             }
         } else {
-            // No specific selection, but try to enable first available track
-            if let firstOption = mediaSelectionGroup.options.first {
-                playerItem.select(firstOption, in: mediaSelectionGroup)
-                Self.logger.debug("🔄 Auto-selected first available subtitle option")
-            } else {
-                Self.logger.warning(" No subtitle options available to select")
-            }
+            Self.logger.debug("   No _selectedSubtitleId set - not selecting any subtitle, letting system decide")
         }
     }
     
