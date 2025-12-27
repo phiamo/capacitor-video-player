@@ -2514,16 +2514,14 @@ open class FullScreenVideoPlayerView: UIView {
             // Wait a moment for audio to stop
             Thread.sleep(forTimeInterval: 0.1)
             
-            // Deactivate the session with proper options
+            // Deactivate the session with proper options to notify other audio sessions
+            // DO NOT reset category - let the audio player reactivate with its own category
             try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
             
-            // Reset to default category to prevent conflicts
-            try audioSession.setCategory(.ambient, mode: .default, options: [])
-            
-            Self.logger.notice(" Audio session deactivated and reset")
+            Self.logger.notice(" Audio session deactivated (category preserved for audio player)")
         } catch {
             Self.logger.error(" Failed to deactivate audio session: \(error)")
-            // Force deactivation
+            // Force deactivation as fallback
             do {
                 let audioSession = AVAudioSession.sharedInstance()
                 try audioSession.setActive(false)
