@@ -236,11 +236,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
     styledPlayerView.setShowRewindButton(false);
 
     Activity mAct = getActivity();
-    if (displayMode.equals("landscape")) {
-      mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-    }
-    if (displayMode.equals("portrait")) {
-      mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+    // Android 16 (API 36) and above ignores orientation restrictions on large displays (foldables, tablets)
+    // For Android 16+, rely on adjustAspectRatio() to handle orientation changes gracefully
+    // This prevents Play Store warnings about ignored orientation restrictions
+    if (Build.VERSION.SDK_INT < 36) {
+      if (displayMode.equals("landscape")) {
+        mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+      }
+      if (displayMode.equals("portrait")) {
+        mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+      }
     }
     if (!showControls) {
       styledPlayerView.setUseController(false);
@@ -1576,6 +1581,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   private void adjustAspectRatio() {
+    if (styledPlayerView == null) {
+      return;
+    }
     if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
       styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
     } else if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
