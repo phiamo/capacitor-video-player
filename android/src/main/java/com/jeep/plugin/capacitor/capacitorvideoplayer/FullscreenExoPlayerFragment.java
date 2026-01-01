@@ -1647,7 +1647,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   private void adjustAspectRatio() {
-    if (styledPlayerView == null) {
+    // Check if fragment is properly attached and has a valid view
+    if (!isAdded() || getView() == null || styledPlayerView == null) {
       return;
     }
     if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
