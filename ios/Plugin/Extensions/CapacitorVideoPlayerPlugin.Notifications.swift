@@ -64,6 +64,16 @@ extension CapacitorVideoPlayerPlugin {
         }
     }
 
+    // MARK: - playerItemPositionUpdate
+
+    @objc func playerItemPositionUpdate(notification: Notification) {
+        guard let info = notification.userInfo as? [String: Any] else { return }
+        DispatchQueue.main.async {
+            self.notifyListeners("jeepCapVideoPlayerPositionUpdate", data: info, retainUntilConsumed: false)
+            return
+        }
+    }
+
     // MARK: - playerFullscreenDismiss
 
     @objc func playerFullscreenDismiss(notification: Notification) {

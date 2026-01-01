@@ -244,6 +244,11 @@ export interface capVideoPlayerOptions {
      * default: ""
      */
     artwork?: string;
+    /**
+     * Position update interval in seconds for periodic position events
+     * default: 5
+     */
+    positionUpdateInterval?: number;
 }
 export interface capVideoPlayerIdOptions {
     /**
@@ -310,6 +315,20 @@ export interface capExitListener {
      * Video current time when listener trigerred
      */
     currentTime?: number;
+}
+export interface capPositionUpdateListener {
+    /**
+     * Id of DIV Element parent of the player
+     */
+    playerId?: string;
+    /**
+     * Video current time when listener triggered
+     */
+    currentTime?: number;
+    /**
+     * Video duration in seconds
+     */
+    duration?: number;
 }
 export interface capVideoPlayerResult {
     /**

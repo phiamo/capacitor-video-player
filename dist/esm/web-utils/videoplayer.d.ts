@@ -25,7 +25,9 @@ export declare class VideoPlayer {
     private _subtitleTrackElements;
     private _subtitleMenuButton;
     private _subtitleMenu;
-    constructor(mode: string, url: string, playerId: string, rate: number, exitOnEnd: boolean, loopOnEnd: boolean, container: any, zIndex: number, width?: number, height?: number, subtitleTracks?: SubtitleTrack[] | null, selectedSubtitleId?: string | null, subtitleOptions?: SubTitleOptions);
+    private _positionUpdateInterval;
+    private _positionUpdateTimer?;
+    constructor(mode: string, url: string, playerId: string, rate: number, exitOnEnd: boolean, loopOnEnd: boolean, container: any, zIndex: number, width?: number, height?: number, subtitleTracks?: SubtitleTrack[] | null, selectedSubtitleId?: string | null, subtitleOptions?: SubTitleOptions, positionUpdateInterval?: number);
     initialize(): Promise<void>;
     private createVideoElement;
     private _goFullscreen;
@@ -33,6 +35,9 @@ export declare class VideoPlayer {
     private _getVideoType;
     private _doHide;
     private _createEvent;
+    private _createPositionUpdateEvent;
+    private _startPositionUpdates;
+    private _stopPositionUpdates;
     private _closeFullscreen;
     /**
      * Initialize subtitle tracks using HTML5 TextTrack API

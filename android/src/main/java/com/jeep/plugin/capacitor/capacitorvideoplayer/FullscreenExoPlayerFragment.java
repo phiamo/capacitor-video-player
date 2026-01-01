@@ -19,6 +19,7 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.util.Log;
@@ -127,6 +128,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
   public String artwork;
   public List<SubtitleTrack> subtitleTracks;
   public String selectedSubtitleId;
+  public int positionUpdateInterval = 5; // Default 5 seconds
 
   private static final String TAG = FullscreenExoPlayerFragment.class.getName();
   public static final long UNKNOWN_TIME = -1L;
@@ -189,6 +191,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
       checkPIPPermission();
     }
   };
+  private Handler positionUpdateHandler = new Handler(Looper.getMainLooper());
+  private Runnable positionUpdateRunnable;
 
   private Integer resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
   private MediaRouteButton mediaRouteButton;
@@ -352,6 +356,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                   Log.v(TAG, "**** in ExoPlayer.STATE_READY going to notify playerItemPlay ");
                   NotificationCenter.defaultCenter().postNotification("playerItemPlay", info);
                   resizeBtn.setVisibility(View.VISIBLE);
+                  startPositionUpdates();
 
                   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && pipEnabled) {
                     pipBtn.setVisibility(View.VISIBLE);
@@ -359,6 +364,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 } else {
                   Log.v(TAG, "**** in ExoPlayer.STATE_READY going to notify playerItemPause ");
                   NotificationCenter.defaultCenter().postNotification("playerItemPause", info);
+                  stopPositionUpdates();
                 }
               }
               break;
@@ -745,6 +751,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Release the player
    */
   public void releasePlayer() {
+    stopPositionUpdates();
     if (player != null) {
       playWhenReady = player.getPlayWhenReady();
       playbackPosition = player.getCurrentPosition();
@@ -1250,14 +1257,73 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
         /* If the user start the cast before the player is ready and playing, then the video will start
           in the device and chromecast at the same time. This is to avoid that behaviour.*/
-    if (!isCastSession) player.setPlayWhenReady(true);
+    if (!isCastSession) {
+      player.setPlayWhenReady(true);
+      startPositionUpdates();
+    }
   }
 
   /**
    * Pause the player
    */
   public void pause() {
-    if (player != null) player.setPlayWhenReady(false);
+    if (player != null) {
+      player.setPlayWhenReady(false);
+      stopPositionUpdates();
+    }
+  }
+  
+  /**
+   * Start periodic position updates
+   */
+  private void startPositionUpdates() {
+    stopPositionUpdates(); // Stop any existing updates
+    
+    if (positionUpdateInterval <= 0 || player == null) {
+      return;
+    }
+    
+    positionUpdateRunnable = new Runnable() {
+      @Override
+      public void run() {
+        // Check if player is still valid before accessing it
+        if (player == null || positionUpdateRunnable == null) {
+          return;
+        }
+        
+        try {
+          if (player.isPlaying()) {
+            Map<String, Object> info = new HashMap<String, Object>() {
+              {
+                put("fromPlayerId", playerId);
+                put("currentTime", String.valueOf(player.getCurrentPosition() / 1000.0));
+                long duration = player.getDuration();
+                put("duration", String.valueOf(duration == UNKNOWN_TIME ? 0.0 : duration / 1000.0));
+              }
+            };
+            NotificationCenter.defaultCenter().postNotification("playerItemPositionUpdate", info);
+            // Only reschedule if player is still valid
+            if (player != null && positionUpdateRunnable != null) {
+              positionUpdateHandler.postDelayed(this, (long)(positionUpdateInterval * 1000));
+            }
+          }
+        } catch (Exception e) {
+          // Player might have been released, stop updates
+          positionUpdateRunnable = null;
+        }
+      }
+    };
+    positionUpdateHandler.post(positionUpdateRunnable);
+  }
+  
+  /**
+   * Stop periodic position updates
+   */
+  private void stopPositionUpdates() {
+    if (positionUpdateRunnable != null) {
+      positionUpdateHandler.removeCallbacks(positionUpdateRunnable);
+      positionUpdateRunnable = null;
+    }
   }
 
   /**

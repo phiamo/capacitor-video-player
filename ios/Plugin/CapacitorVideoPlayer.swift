@@ -27,7 +27,8 @@ enum CapacitorVideoPlayerError: Error {
                                              smallTitle: String?,
                                              artwork: String?,
                                              subtitleTracks: [[String: Any]]?,
-                                             selectedSubtitleId: String?
+                                             selectedSubtitleId: String?,
+                                             positionUpdateInterval: Double
 
     ) -> FullScreenVideoPlayerView {
 
@@ -40,7 +41,8 @@ enum CapacitorVideoPlayerError: Error {
             stHeaders: headers, stOptions: options,
             title: title, smallTitle: smallTitle, artwork: artwork,
             subtitleTracks: subtitleTracks,
-            selectedSubtitleId: selectedSubtitleId)
+            selectedSubtitleId: selectedSubtitleId,
+            positionUpdateInterval: positionUpdateInterval)
         return videoPlayerFullScreenView
     }
 

@@ -40,7 +40,8 @@ public class CapacitorVideoPlayer {
         Boolean isInternal,
         Long videoId,
         List<SubtitleTrack> subtitleTracks,
-        String selectedSubtitleId
+        String selectedSubtitleId,
+        int positionUpdateInterval
     ) {
         FullscreenExoPlayerFragment fsFragment = new FullscreenExoPlayerFragment();
 
@@ -67,6 +68,7 @@ public class CapacitorVideoPlayer {
         fsFragment.videoId = videoId;
         fsFragment.subtitleTracks = subtitleTracks;
         fsFragment.selectedSubtitleId = selectedSubtitleId;
+        fsFragment.positionUpdateInterval = positionUpdateInterval;
         return fsFragment;
     }
 

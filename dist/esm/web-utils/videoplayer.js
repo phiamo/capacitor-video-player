@@ -1,7 +1,7 @@
 import Hls from 'hls.js';
 import { videoTypes, possibleQueryParameterExtensions } from './video-types';
 export class VideoPlayer {
-    constructor(mode, url, playerId, rate, exitOnEnd, loopOnEnd, container, zIndex, width, height, subtitleTracks, selectedSubtitleId, subtitleOptions) {
+    constructor(mode, url, playerId, rate, exitOnEnd, loopOnEnd, container, zIndex, width, height, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval) {
         this.pipMode = false;
         this._videoType = null;
         this._videoContainer = null;
@@ -15,6 +15,7 @@ export class VideoPlayer {
         this._subtitleTrackElements = [];
         this._subtitleMenuButton = null;
         this._subtitleMenu = null;
+        this._positionUpdateInterval = 5;
         this._url = url;
         this._container = container;
         this._mode = mode;
@@ -29,6 +30,7 @@ export class VideoPlayer {
         this._subtitleTracks = subtitleTracks || null;
         this._selectedSubtitleId = selectedSubtitleId || null;
         this._subtitleOptions = subtitleOptions;
+        this._positionUpdateInterval = positionUpdateInterval && positionUpdateInterval > 0 ? positionUpdateInterval : 5;
     }
     async initialize() {
         // get the video type
@@ -110,6 +112,7 @@ export class VideoPlayer {
         const isSet = await this._setPlayer();
         if (isSet) {
             this.videoEl.onended = async () => {
+                this._stopPositionUpdates();
                 this._isEnded = true;
                 this.isPlaying = false;
                 if (this.videoEl) {
@@ -143,13 +146,16 @@ export class VideoPlayer {
                 if (this._firstReadyToPlay)
                     this._firstReadyToPlay = false;
                 this._createEvent('Play', this._playerId);
+                this._startPositionUpdates();
             };
             this.videoEl.onplaying = () => {
                 this._createEvent('Playing', this._playerId);
+                this._startPositionUpdates();
             };
             this.videoEl.onpause = () => {
                 this.isPlaying = false;
                 this._createEvent('Pause', this._playerId);
+                this._stopPositionUpdates();
             };
             if (this._mode === 'fullscreen') {
                 // create the video player exit button
@@ -317,6 +323,30 @@ export class VideoPlayer {
             });
         }
         document.dispatchEvent(event);
+    }
+    _createPositionUpdateEvent(playerId, currentTime, duration) {
+        const event = new CustomEvent('videoPlayerPositionUpdate', {
+            detail: { fromPlayerId: playerId, currentTime, duration }
+        });
+        document.dispatchEvent(event);
+    }
+    _startPositionUpdates() {
+        this._stopPositionUpdates();
+        if (this.videoEl && this._positionUpdateInterval > 0) {
+            this._positionUpdateTimer = window.setInterval(() => {
+                if (this.videoEl && !this.videoEl.paused && this.isPlaying) {
+                    const currentTime = this.videoEl.currentTime;
+                    const duration = this.videoEl.duration || 0;
+                    this._createPositionUpdateEvent(this._playerId, currentTime, duration);
+                }
+            }, this._positionUpdateInterval * 1000);
+        }
+    }
+    _stopPositionUpdates() {
+        if (this._positionUpdateTimer) {
+            window.clearInterval(this._positionUpdateTimer);
+            this._positionUpdateTimer = undefined;
+        }
     }
     _closeFullscreen() {
         const mydoc = document;

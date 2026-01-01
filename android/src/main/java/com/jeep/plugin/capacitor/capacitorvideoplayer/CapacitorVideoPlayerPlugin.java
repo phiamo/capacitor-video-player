@@ -89,6 +89,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
     private JSObject subTitleOptions;
     private List<SubtitleTrack> subtitleTracks = new ArrayList<>();
     private String selectedSubtitleId = null;
+    private int positionUpdateInterval = 5;
     private final JSObject ret = new JSObject();
 
 
@@ -273,6 +274,14 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 _artwork = call.getString("artwork");
             }
             artwork = _artwork;
+            int _positionUpdateInterval = 5;
+            if (call.getData().has("positionUpdateInterval")) {
+                _positionUpdateInterval = call.getInt("positionUpdateInterval");
+                if (_positionUpdateInterval <= 0) {
+                    _positionUpdateInterval = 5;
+                }
+            }
+            positionUpdateInterval = _positionUpdateInterval;
             AddObserversToNotificationCenter();
             Log.v(TAG, "display url: " + url);
             Log.v(TAG, "display subtitle: " + subtitle);
@@ -1038,7 +1047,8 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
               false,
               null,
               subtitleTracks,
-              selectedSubtitleId
+              selectedSubtitleId,
+              positionUpdateInterval
             );
           } else {
             Map<String, Object> info = new HashMap<String, Object>() {
@@ -1107,6 +1117,32 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
                         data.put("currentTime", this.getInfo().get("currentTime"));
                         notifyListeners("jeepCapVideoPlayerReady", data);
+                        return;
+                    }
+                }
+            );
+        NotificationCenter
+            .defaultCenter()
+            .addMethodForNotification(
+                "playerItemPositionUpdate",
+                new MyRunnable() {
+                    @Override
+                    public void run() {
+                        JSObject data = new JSObject();
+                        data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
+                        Object currentTimeObj = this.getInfo().get("currentTime");
+                        Object durationObj = this.getInfo().get("duration");
+                        if (currentTimeObj instanceof String) {
+                            data.put("currentTime", Double.parseDouble((String) currentTimeObj));
+                        } else {
+                            data.put("currentTime", currentTimeObj);
+                        }
+                        if (durationObj instanceof String) {
+                            data.put("duration", Double.parseDouble((String) durationObj));
+                        } else if (durationObj != null) {
+                            data.put("duration", durationObj);
+                        }
+                        notifyListeners("jeepCapVideoPlayerPositionUpdate", data);
                         return;
                     }
                 }
@@ -1216,7 +1252,8 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                                 true,
                                 videoId,
                                 subtitleTracks,
-                                selectedSubtitleId
+                                selectedSubtitleId,
+                                positionUpdateInterval
                             );
                         } else {
                             Toast.makeText(context, "No Video files found ", Toast.LENGTH_SHORT).show();
@@ -1257,7 +1294,8 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
         Boolean isInternal,
         Long videoId,
         List<SubtitleTrack> subtitleTracks,
-        String selectedSubtitleId
+        String selectedSubtitleId,
+        int positionUpdateInterval
     ) {
         Log.v(TAG, "§§§§ createFullScreenFragment chromecast: " + chromecast);
 
@@ -1285,7 +1323,8 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 isInternal,
                 videoId,
                 subtitleTracks,
-                selectedSubtitleId
+                selectedSubtitleId,
+                positionUpdateInterval
             );
         bridge
             .getActivity()

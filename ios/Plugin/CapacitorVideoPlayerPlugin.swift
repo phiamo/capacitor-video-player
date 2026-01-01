@@ -40,6 +40,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
     var pauseObserver: Any?
     var endObserver: Any?
     var readyObserver: Any?
+    var positionUpdateObserver: Any?
     var fsDismissObserver: Any?
     var backgroundObserver: Any?
     var foregroundObserver: Any?
@@ -70,6 +71,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         NotificationCenter.default.removeObserver(pauseObserver as Any)
         NotificationCenter.default.removeObserver(endObserver as Any)
         NotificationCenter.default.removeObserver(readyObserver as Any)
+        NotificationCenter.default.removeObserver(positionUpdateObserver as Any)
         NotificationCenter.default.removeObserver(fsDismissObserver as Any)
         NotificationCenter.default.removeObserver(backgroundObserver as Any)
         NotificationCenter.default.removeObserver(foregroundObserver as Any)
@@ -80,6 +82,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         self.pauseObserver = nil
         self.endObserver = nil
         self.readyObserver = nil
+        self.positionUpdateObserver = nil
         self.fsDismissObserver = nil
         self.backgroundObserver = nil
         self.foregroundObserver = nil
@@ -166,6 +169,12 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         var artwork: String?
         if let sartwork = call.options["artwork"] as? String {
             artwork = sartwork
+        }
+        var positionUpdateInterval: Double = 5.0
+        if let sPositionUpdateInterval = call.options["positionUpdateInterval"] as? Double {
+            positionUpdateInterval = sPositionUpdateInterval > 0 ? sPositionUpdateInterval : 5.0
+        } else if let sPositionUpdateInterval = call.options["positionUpdateInterval"] as? Int {
+            positionUpdateInterval = Double(sPositionUpdateInterval > 0 ? sPositionUpdateInterval : 5)
         }
         self.fsPlayerId = playerId
         self.mode = mode
@@ -298,7 +307,8 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
                     smallTitle: smallTitle,
                     artwork: artwork,
                     subtitleTracks: subtitleTracks,
-                    selectedSubtitleId: selectedSubtitleId)
+                    selectedSubtitleId: selectedSubtitleId,
+                    positionUpdateInterval: positionUpdateInterval)
 
             }
         } else {

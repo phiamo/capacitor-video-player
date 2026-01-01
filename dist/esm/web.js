@@ -107,7 +107,10 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
             // Normalize subtitle tracks (backward compatibility)
             const subtitleTracks = this.normalizeSubtitleTracks(options);
             const selectedSubtitleId = options.selectedSubtitleId || null;
-            const result = await this._initializeVideoPlayer(url, playerId, this.mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, options.subtitleOptions);
+            const positionUpdateInterval = options.positionUpdateInterval && options.positionUpdateInterval > 0
+                ? options.positionUpdateInterval
+                : 5;
+            const result = await this._initializeVideoPlayer(url, playerId, this.mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, options.subtitleOptions, positionUpdateInterval);
             return Promise.resolve({ result: result });
         }
         else {
@@ -729,7 +732,7 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
         }
         return playerSize;
     }
-    async _initializeVideoPlayer(url, playerId, mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, subtitleOptions) {
+    async _initializeVideoPlayer(url, playerId, mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval) {
         const videoURL = url
             ? url.indexOf('%2F') == -1
                 ? encodeURI(url)
@@ -752,11 +755,11 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
                 message: 'playerSize must be defined in embedded mode',
             });
         if (mode === 'embedded') {
-            this._players[playerId] = new VideoPlayer('embedded', videoURL, playerId, rate, exitOnEnd, loopOnEnd, this.videoContainer, 2, playerSize.width, playerSize.height, subtitleTracks, selectedSubtitleId, subtitleOptions);
+            this._players[playerId] = new VideoPlayer('embedded', videoURL, playerId, rate, exitOnEnd, loopOnEnd, this.videoContainer, 2, playerSize.width, playerSize.height, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval);
             await this._players[playerId].initialize();
         }
         else if (mode === 'fullscreen') {
-            this._players['fullscreen'] = new VideoPlayer('fullscreen', videoURL, 'fullscreen', rate, exitOnEnd, loopOnEnd, this.videoContainer, 99995, undefined, undefined, subtitleTracks, selectedSubtitleId, subtitleOptions);
+            this._players['fullscreen'] = new VideoPlayer('fullscreen', videoURL, 'fullscreen', rate, exitOnEnd, loopOnEnd, this.videoContainer, 99995, undefined, undefined, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval);
             await this._players['fullscreen'].initialize();
         }
         else {
@@ -817,6 +820,9 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
     handlePlayerReady(data) {
         this.notifyListeners('jeepCapVideoPlayerReady', data);
     }
+    handlePlayerPositionUpdate(data) {
+        this.notifyListeners('jeepCapVideoPlayerPositionUpdate', data);
+    }
     addListeners() {
         document.addEventListener('videoPlayerPlay', (ev) => {
             this.handlePlayerPlay(ev.detail);
@@ -832,6 +838,9 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
         }, false);
         document.addEventListener('videoPlayerExit', () => {
             this.handlePlayerExit();
+        }, false);
+        document.addEventListener('videoPlayerPositionUpdate', (ev) => {
+            this.handlePlayerPositionUpdate(ev.detail);
         }, false);
     }
     removeListeners() {
@@ -849,6 +858,9 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
         }, false);
         document.removeEventListener('videoPlayerExit', () => {
             this.handlePlayerExit();
+        }, false);
+        document.removeEventListener('videoPlayerPositionUpdate', (ev) => {
+            this.handlePlayerPositionUpdate(ev.detail);
         }, false);
     }
 }

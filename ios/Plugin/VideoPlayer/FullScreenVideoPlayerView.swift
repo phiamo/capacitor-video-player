@@ -122,7 +122,9 @@ open class FullScreenVideoPlayerView: UIView {
     var videoPlayerMoveObserver: NSKeyValueObservation?
     var periodicTimeObserver: Any?
     var subtitleTimeObserver: Any?
+    var positionUpdateObserver: Any?
     var mediaSelectionObserver: NSKeyValueObservation?
+    private var _positionUpdateInterval: Double = 5.0
 
     init(url: URL, rate: Float, playerId: String, exitOnEnd: Bool,
          loopOnEnd: Bool, pipEnabled: Bool, showControls: Bool,
@@ -130,7 +132,7 @@ open class FullScreenVideoPlayerView: UIView {
          stHeaders: [String: String]?, stOptions: [String: Any]?,
          title: String?, smallTitle: String?, artwork: String?,
          subtitleTracks: [[String: Any]]?,
-         selectedSubtitleId: String?) {
+         selectedSubtitleId: String?, positionUpdateInterval: Double = 5.0) {
         //self._videoPath = videoPath
         self._url = url
         self._subtitleTracks = subtitleTracks
@@ -171,6 +173,7 @@ open class FullScreenVideoPlayerView: UIView {
         self._title = title
         self._smallTitle = smallTitle
         self._artwork = artwork
+        self._positionUpdateInterval = positionUpdateInterval
 
         // For HLS streams, use custom URL scheme to enable resource loader
         // This is needed both for subtitle injection AND for adding CLOSED-CAPTIONS=NONE when no subtitles
@@ -2551,6 +2554,9 @@ open class FullScreenVideoPlayerView: UIView {
                 
                 Self.logger.notice(" HLS stream auto-play started")
                 
+                // Start position updates
+                self.startPositionUpdates()
+                
                 // Notify that playback has started
                 let vId: [String: Any] = [
                     "fromPlayerId": self._videoId,
@@ -2679,6 +2685,8 @@ open class FullScreenVideoPlayerView: UIView {
                     }
 
                     self.isPlaying = true
+                    // Start position updates when playback actually starts
+                    self.startPositionUpdates()
                     NotificationCenter.default.post(name: .playerItemPlay, object: nil, userInfo: vId)
                 } else if rate == 0 && !isVideoEnded && abs(self._currentTime - self._duration) < 0.2 {
                     self.isPlaying = false
@@ -2762,6 +2770,11 @@ open class FullScreenVideoPlayerView: UIView {
         if let subtitleObserver = self.subtitleTimeObserver {
             self.player?.removeTimeObserver(subtitleObserver)
             self.subtitleTimeObserver = nil
+        }
+        
+        if let positionObserver = self.positionUpdateObserver {
+            self.player?.removeTimeObserver(positionObserver)
+            self.positionUpdateObserver = nil
         }
         
         // Clean up player
@@ -2858,11 +2871,19 @@ open class FullScreenVideoPlayerView: UIView {
         self.player?.play()
         self.player?.rate = _videoRate
         
-        Self.logger.debug("▶️ Video playback started")
+        // Start position updates if not already started
+        // Use a small delay to ensure player is ready
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            self.startPositionUpdates()
+        }
     }
     @objc func pause() {
         self.isPlaying = false
         self.player?.pause()
+        
+        // Stop position updates when paused
+        self.stopPositionUpdates()
         
         Self.logger.debug("⏸️ Video playback paused")
     }
@@ -3087,6 +3108,53 @@ open class FullScreenVideoPlayerView: UIView {
                 
                 MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
             }
+        }
+    }
+    
+    // MARK: - Position Updates
+    
+    func startPositionUpdates() {
+        // Remove existing observer if any
+        if let existingObserver = self.positionUpdateObserver {
+            self.player?.removeTimeObserver(existingObserver)
+            self.positionUpdateObserver = nil
+        }
+        
+        // Only start if player is available and interval is greater than 0
+        guard let player = self.player, self._positionUpdateInterval > 0 else {
+            return
+        }
+        
+        let interval = CMTimeMake(value: Int64(self._positionUpdateInterval), timescale: 1)
+        self.positionUpdateObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: DispatchQueue.main) { [weak self] time in
+            guard let self = self else { return }
+            
+            // Only send updates when video is playing
+            guard self.isPlaying, let playerItem = self.playerItem else {
+                return
+            }
+            
+            let currentTime = CMTimeGetSeconds(time)
+            let duration = self.getDuration()
+            
+            let info: [String: Any] = [
+                "fromPlayerId": self._videoId,
+                "currentTime": currentTime,
+                "duration": duration
+            ]
+            
+            NotificationCenter.default.post(
+                name: .playerItemPositionUpdate,
+                object: nil,
+                userInfo: info
+            )
+        }
+    }
+    
+    func stopPositionUpdates() {
+        if let observer = self.positionUpdateObserver {
+            self.player?.removeTimeObserver(observer)
+            self.positionUpdateObserver = nil
         }
     }
 }

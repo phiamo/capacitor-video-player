@@ -21,7 +21,7 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
     };
 
     class VideoPlayer {
-        constructor(mode, url, playerId, rate, exitOnEnd, loopOnEnd, container, zIndex, width, height, subtitleTracks, selectedSubtitleId, subtitleOptions) {
+        constructor(mode, url, playerId, rate, exitOnEnd, loopOnEnd, container, zIndex, width, height, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval) {
             this.pipMode = false;
             this._videoType = null;
             this._videoContainer = null;
@@ -35,6 +35,7 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             this._subtitleTrackElements = [];
             this._subtitleMenuButton = null;
             this._subtitleMenu = null;
+            this._positionUpdateInterval = 5;
             this._url = url;
             this._container = container;
             this._mode = mode;
@@ -49,6 +50,7 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             this._subtitleTracks = subtitleTracks || null;
             this._selectedSubtitleId = selectedSubtitleId || null;
             this._subtitleOptions = subtitleOptions;
+            this._positionUpdateInterval = positionUpdateInterval && positionUpdateInterval > 0 ? positionUpdateInterval : 5;
         }
         async initialize() {
             // get the video type
@@ -130,6 +132,7 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             const isSet = await this._setPlayer();
             if (isSet) {
                 this.videoEl.onended = async () => {
+                    this._stopPositionUpdates();
                     this._isEnded = true;
                     this.isPlaying = false;
                     if (this.videoEl) {
@@ -163,13 +166,16 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
                     if (this._firstReadyToPlay)
                         this._firstReadyToPlay = false;
                     this._createEvent('Play', this._playerId);
+                    this._startPositionUpdates();
                 };
                 this.videoEl.onplaying = () => {
                     this._createEvent('Playing', this._playerId);
+                    this._startPositionUpdates();
                 };
                 this.videoEl.onpause = () => {
                     this.isPlaying = false;
                     this._createEvent('Pause', this._playerId);
+                    this._stopPositionUpdates();
                 };
                 if (this._mode === 'fullscreen') {
                     // create the video player exit button
@@ -337,6 +343,30 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
                 });
             }
             document.dispatchEvent(event);
+        }
+        _createPositionUpdateEvent(playerId, currentTime, duration) {
+            const event = new CustomEvent('videoPlayerPositionUpdate', {
+                detail: { fromPlayerId: playerId, currentTime, duration }
+            });
+            document.dispatchEvent(event);
+        }
+        _startPositionUpdates() {
+            this._stopPositionUpdates();
+            if (this.videoEl && this._positionUpdateInterval > 0) {
+                this._positionUpdateTimer = window.setInterval(() => {
+                    if (this.videoEl && !this.videoEl.paused && this.isPlaying) {
+                        const currentTime = this.videoEl.currentTime;
+                        const duration = this.videoEl.duration || 0;
+                        this._createPositionUpdateEvent(this._playerId, currentTime, duration);
+                    }
+                }, this._positionUpdateInterval * 1000);
+            }
+        }
+        _stopPositionUpdates() {
+            if (this._positionUpdateTimer) {
+                window.clearInterval(this._positionUpdateTimer);
+                this._positionUpdateTimer = undefined;
+            }
         }
         _closeFullscreen() {
             const mydoc = document;
@@ -815,7 +845,10 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
                 // Normalize subtitle tracks (backward compatibility)
                 const subtitleTracks = this.normalizeSubtitleTracks(options);
                 const selectedSubtitleId = options.selectedSubtitleId || null;
-                const result = await this._initializeVideoPlayer(url, playerId, this.mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, options.subtitleOptions);
+                const positionUpdateInterval = options.positionUpdateInterval && options.positionUpdateInterval > 0
+                    ? options.positionUpdateInterval
+                    : 5;
+                const result = await this._initializeVideoPlayer(url, playerId, this.mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, options.subtitleOptions, positionUpdateInterval);
                 return Promise.resolve({ result: result });
             }
             else {
@@ -1437,7 +1470,7 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             }
             return playerSize;
         }
-        async _initializeVideoPlayer(url, playerId, mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, subtitleOptions) {
+        async _initializeVideoPlayer(url, playerId, mode, rate, exitOnEnd, loopOnEnd, componentTag, playerSize, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval) {
             const videoURL = url
                 ? url.indexOf('%2F') == -1
                     ? encodeURI(url)
@@ -1460,11 +1493,11 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
                     message: 'playerSize must be defined in embedded mode',
                 });
             if (mode === 'embedded') {
-                this._players[playerId] = new VideoPlayer('embedded', videoURL, playerId, rate, exitOnEnd, loopOnEnd, this.videoContainer, 2, playerSize.width, playerSize.height, subtitleTracks, selectedSubtitleId, subtitleOptions);
+                this._players[playerId] = new VideoPlayer('embedded', videoURL, playerId, rate, exitOnEnd, loopOnEnd, this.videoContainer, 2, playerSize.width, playerSize.height, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval);
                 await this._players[playerId].initialize();
             }
             else if (mode === 'fullscreen') {
-                this._players['fullscreen'] = new VideoPlayer('fullscreen', videoURL, 'fullscreen', rate, exitOnEnd, loopOnEnd, this.videoContainer, 99995, undefined, undefined, subtitleTracks, selectedSubtitleId, subtitleOptions);
+                this._players['fullscreen'] = new VideoPlayer('fullscreen', videoURL, 'fullscreen', rate, exitOnEnd, loopOnEnd, this.videoContainer, 99995, undefined, undefined, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval);
                 await this._players['fullscreen'].initialize();
             }
             else {
@@ -1525,6 +1558,9 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
         handlePlayerReady(data) {
             this.notifyListeners('jeepCapVideoPlayerReady', data);
         }
+        handlePlayerPositionUpdate(data) {
+            this.notifyListeners('jeepCapVideoPlayerPositionUpdate', data);
+        }
         addListeners() {
             document.addEventListener('videoPlayerPlay', (ev) => {
                 this.handlePlayerPlay(ev.detail);
@@ -1540,6 +1576,9 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             }, false);
             document.addEventListener('videoPlayerExit', () => {
                 this.handlePlayerExit();
+            }, false);
+            document.addEventListener('videoPlayerPositionUpdate', (ev) => {
+                this.handlePlayerPositionUpdate(ev.detail);
             }, false);
         }
         removeListeners() {
@@ -1557,6 +1596,9 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             }, false);
             document.removeEventListener('videoPlayerExit', () => {
                 this.handlePlayerExit();
+            }, false);
+            document.removeEventListener('videoPlayerPositionUpdate', (ev) => {
+                this.handlePlayerPositionUpdate(ev.detail);
             }, false);
         }
     }

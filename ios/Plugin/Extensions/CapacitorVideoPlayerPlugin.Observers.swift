@@ -30,6 +30,9 @@ extension CapacitorVideoPlayerPlugin {
         readyObserver = NotificationCenter.default
             .addObserver(forName: .playerItemReady, object: nil,
                          queue: nil, using: playerItemReady)
+        positionUpdateObserver = NotificationCenter.default
+            .addObserver(forName: .playerItemPositionUpdate, object: nil,
+                         queue: nil, using: playerItemPositionUpdate)
         fsDismissObserver = NotificationCenter.default
             .addObserver(forName: .playerFullscreenDismiss, object: nil,
                          queue: nil, using: playerFullscreenDismiss)
@@ -174,7 +177,8 @@ extension CapacitorVideoPlayerPlugin {
             subTitleOptions: nil, headers: nil,
             title: nil, smallTitle: nil, artwork: nil,
             subtitleTracks: nil,
-            selectedSubtitleId: nil)
+            selectedSubtitleId: nil,
+            positionUpdateInterval: 5.0)
         return
     }
     // swiftlint:enable function_body_length

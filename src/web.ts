@@ -147,6 +147,9 @@ export class CapacitorVideoPlayerWeb
       // Normalize subtitle tracks (backward compatibility)
       const subtitleTracks = this.normalizeSubtitleTracks(options);
       const selectedSubtitleId = options.selectedSubtitleId || null;
+      const positionUpdateInterval = options.positionUpdateInterval && options.positionUpdateInterval > 0 
+        ? options.positionUpdateInterval 
+        : 5;
 
       const result = await this._initializeVideoPlayer(
         url,
@@ -160,6 +163,7 @@ export class CapacitorVideoPlayerWeb
         subtitleTracks,
         selectedSubtitleId,
         options.subtitleOptions,
+        positionUpdateInterval,
       );
       return Promise.resolve({ result: result });
     } else {
@@ -812,6 +816,7 @@ export class CapacitorVideoPlayerWeb
     subtitleTracks: SubtitleTrack[] | null,
     selectedSubtitleId: string | null,
     subtitleOptions?: any,
+    positionUpdateInterval?: number,
   ): Promise<any> {
     const videoURL: string = url
       ? url.indexOf('%2F') == -1
@@ -849,6 +854,7 @@ export class CapacitorVideoPlayerWeb
         subtitleTracks,
         selectedSubtitleId,
         subtitleOptions,
+        positionUpdateInterval,
       );
       await this._players[playerId].initialize();
     } else if (mode === 'fullscreen') {
@@ -866,6 +872,7 @@ export class CapacitorVideoPlayerWeb
         subtitleTracks,
         selectedSubtitleId,
         subtitleOptions,
+        positionUpdateInterval,
       );
       await this._players['fullscreen'].initialize();
     } else {
@@ -925,6 +932,9 @@ export class CapacitorVideoPlayerWeb
   private handlePlayerReady(data: any) {
     this.notifyListeners('jeepCapVideoPlayerReady', data);
   }
+  private handlePlayerPositionUpdate(data: any) {
+    this.notifyListeners('jeepCapVideoPlayerPositionUpdate', data);
+  }
 
   private addListeners() {
     document.addEventListener('videoPlayerPlay', (ev: any) => {
@@ -941,6 +951,9 @@ export class CapacitorVideoPlayerWeb
     },false);
     document.addEventListener('videoPlayerExit', () => {
       this.handlePlayerExit();
+    },false);
+    document.addEventListener('videoPlayerPositionUpdate', (ev: any) => {
+      this.handlePlayerPositionUpdate(ev.detail);
     },false);
   }
 
@@ -959,6 +972,9 @@ export class CapacitorVideoPlayerWeb
     },false);
     document.removeEventListener('videoPlayerExit', () => {
       this.handlePlayerExit();
+    },false);
+    document.removeEventListener('videoPlayerPositionUpdate', (ev: any) => {
+      this.handlePlayerPositionUpdate(ev.detail);
     },false);
   }
 }

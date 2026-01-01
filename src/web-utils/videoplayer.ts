@@ -35,6 +35,8 @@ export class VideoPlayer {
   private _subtitleTrackElements: HTMLTrackElement[] = [];
   private _subtitleMenuButton: HTMLButtonElement | null = null;
   private _subtitleMenu: HTMLDivElement | null = null;
+  private _positionUpdateInterval: number = 5;
+  private _positionUpdateTimer?: number;
 
   constructor(
     mode: string,
@@ -50,6 +52,7 @@ export class VideoPlayer {
     subtitleTracks?: SubtitleTrack[] | null,
     selectedSubtitleId?: string | null,
     subtitleOptions?: SubTitleOptions,
+    positionUpdateInterval?: number,
   ) {
     this._url = url;
     this._container = container;
@@ -65,6 +68,7 @@ export class VideoPlayer {
     this._subtitleTracks = subtitleTracks || null;
     this._selectedSubtitleId = selectedSubtitleId || null;
     this._subtitleOptions = subtitleOptions;
+    this._positionUpdateInterval = positionUpdateInterval && positionUpdateInterval > 0 ? positionUpdateInterval : 5;
   }
 
   public async initialize(): Promise<void> {
@@ -161,6 +165,7 @@ export class VideoPlayer {
     const isSet: boolean = await this._setPlayer();
     if (isSet) {
       this.videoEl.onended = async () => {
+        this._stopPositionUpdates();
         this._isEnded = true;
         this.isPlaying = false;
         if (this.videoEl) {
@@ -191,13 +196,16 @@ export class VideoPlayer {
         this.isPlaying = true;
         if (this._firstReadyToPlay) this._firstReadyToPlay = false;
         this._createEvent('Play', this._playerId);
+        this._startPositionUpdates();
       };
       this.videoEl.onplaying = () => {
         this._createEvent('Playing', this._playerId);
+        this._startPositionUpdates();
       };
       this.videoEl.onpause = () => {
         this.isPlaying = false;
         this._createEvent('Pause', this._playerId);
+        this._stopPositionUpdates();
       };
       if (this._mode === 'fullscreen') {
         // create the video player exit button
@@ -373,6 +381,33 @@ export class VideoPlayer {
       });
     }
     document.dispatchEvent(event);
+  }
+  
+  private _createPositionUpdateEvent(playerId: string, currentTime: number, duration: number) {
+    const event = new CustomEvent('videoPlayerPositionUpdate', {
+      detail: { fromPlayerId: playerId, currentTime, duration }
+    });
+    document.dispatchEvent(event);
+  }
+  
+  private _startPositionUpdates() {
+    this._stopPositionUpdates();
+    if (this.videoEl && this._positionUpdateInterval > 0) {
+      this._positionUpdateTimer = window.setInterval(() => {
+        if (this.videoEl && !this.videoEl.paused && this.isPlaying) {
+          const currentTime = this.videoEl.currentTime;
+          const duration = this.videoEl.duration || 0;
+          this._createPositionUpdateEvent(this._playerId, currentTime, duration);
+        }
+      }, this._positionUpdateInterval * 1000);
+    }
+  }
+  
+  private _stopPositionUpdates() {
+    if (this._positionUpdateTimer) {
+      window.clearInterval(this._positionUpdateTimer);
+      this._positionUpdateTimer = undefined;
+    }
   }
   private _closeFullscreen() {
     const mydoc: any = document;
