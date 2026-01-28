@@ -213,7 +213,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @return View
    */
   public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-    context = container.getContext();
+    // Fix: Handle null container - can occur when fragment is detached or during lifecycle transitions
+    if (container != null) {
+      context = container.getContext();
+    } else {
+      context = getContext();
+    }
+    
+    // Fix: Return null if fragment is detached (no valid context available)
+    if (context == null) {
+      Log.w(TAG, "Fragment is detached, cannot create view");
+      return null;
+    }
+    
     packageManager = context.getPackageManager();
     view = inflater.inflate(R.layout.fragment_fs_exoplayer, container, false);
     constLayout = view.findViewById(R.id.fsExoPlayer);
@@ -240,16 +252,21 @@ public class FullscreenExoPlayerFragment extends Fragment {
     styledPlayerView.setShowRewindButton(false);
 
     Activity mAct = getActivity();
-    // Android 16 (API 36) and above ignores orientation restrictions on large displays (foldables, tablets)
-    // For Android 16+, rely on adjustAspectRatio() to handle orientation changes gracefully
-    // This prevents Play Store warnings about ignored orientation restrictions
-    if (Build.VERSION.SDK_INT < 36) {
-      if (displayMode.equals("landscape")) {
-        mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    // Fix: Check if activity is null before using it (can be null if fragment is detached)
+    if (mAct != null) {
+      // Android 16 (API 36) and above ignores orientation restrictions on large displays (foldables, tablets)
+      // For Android 16+, rely on adjustAspectRatio() to handle orientation changes gracefully
+      // This prevents Play Store warnings about ignored orientation restrictions
+      if (Build.VERSION.SDK_INT < 36) {
+        if (displayMode.equals("landscape")) {
+          mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        }
+        if (displayMode.equals("portrait")) {
+          mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        }
       }
-      if (displayMode.equals("portrait")) {
-        mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-      }
+    } else {
+      Log.w(TAG, "Activity is null, cannot set orientation");
     }
     if (!showControls) {
       styledPlayerView.setUseController(false);
