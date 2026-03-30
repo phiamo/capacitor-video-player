@@ -27,6 +27,10 @@ export declare class VideoPlayer {
     private _subtitleMenu;
     private _positionUpdateInterval;
     private _positionUpdateTimer?;
+    private _lastStableTime;
+    private _seekStartFrom;
+    private _subtitleBridgeReady;
+    private _lastSubtitleEmitKey;
     constructor(mode: string, url: string, playerId: string, rate: number, exitOnEnd: boolean, loopOnEnd: boolean, container: any, zIndex: number, width?: number, height?: number, subtitleTracks?: SubtitleTrack[] | null, selectedSubtitleId?: string | null, subtitleOptions?: SubTitleOptions, positionUpdateInterval?: number);
     initialize(): Promise<void>;
     private createVideoElement;
@@ -36,6 +40,8 @@ export declare class VideoPlayer {
     private _doHide;
     private _createEvent;
     private _createPositionUpdateEvent;
+    private _emitSubtitleChangeFromTextTracks;
+    private _emitSubtitleChangeResolved;
     private _startPositionUpdates;
     private _stopPositionUpdates;
     private _closeFullscreen;

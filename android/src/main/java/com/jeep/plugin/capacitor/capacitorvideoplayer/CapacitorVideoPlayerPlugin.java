@@ -1150,6 +1150,57 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
         NotificationCenter
             .defaultCenter()
             .addMethodForNotification(
+                "playerItemSeekCompleted",
+                new MyRunnable() {
+                    @Override
+                    public void run() {
+                        JSObject data = new JSObject();
+                        data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
+                        Object fromObj = this.getInfo().get("fromPosition");
+                        Object toObj = this.getInfo().get("toPosition");
+                        Object durationObj = this.getInfo().get("duration");
+                        if (fromObj instanceof String) {
+                            data.put("fromPosition", Double.parseDouble((String) fromObj));
+                        } else {
+                            data.put("fromPosition", fromObj);
+                        }
+                        if (toObj instanceof String) {
+                            data.put("toPosition", Double.parseDouble((String) toObj));
+                        } else {
+                            data.put("toPosition", toObj);
+                        }
+                        if (durationObj instanceof String) {
+                            data.put("duration", Double.parseDouble((String) durationObj));
+                        } else if (durationObj != null) {
+                            data.put("duration", durationObj);
+                        }
+                        notifyListeners("jeepCapVideoPlayerSeek", data);
+                        return;
+                    }
+                }
+            );
+        NotificationCenter
+            .defaultCenter()
+            .addMethodForNotification(
+                "playerItemSubtitleChange",
+                new MyRunnable() {
+                    @Override
+                    public void run() {
+                        JSObject data = new JSObject();
+                        data.put("fromPlayerId", this.getInfo().get("fromPlayerId"));
+                        data.put("language", this.getInfo().get("language"));
+                        Object trackIdObj = this.getInfo().get("trackId");
+                        if (trackIdObj != null) {
+                            data.put("trackId", trackIdObj);
+                        }
+                        notifyListeners("jeepCapVideoPlayerSubtitleChange", data);
+                        return;
+                    }
+                }
+            );
+        NotificationCenter
+            .defaultCenter()
+            .addMethodForNotification(
                 "playerItemEnd",
                 new MyRunnable() {
                     @Override

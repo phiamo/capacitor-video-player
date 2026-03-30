@@ -37,6 +37,10 @@ export class VideoPlayer {
   private _subtitleMenu: HTMLDivElement | null = null;
   private _positionUpdateInterval: number = 5;
   private _positionUpdateTimer?: number;
+  private _lastStableTime = 0;
+  private _seekStartFrom = 0;
+  private _subtitleBridgeReady = false;
+  private _lastSubtitleEmitKey = '';
 
   constructor(
     mode: string,
@@ -162,9 +166,12 @@ export class VideoPlayer {
     this.videoEl.playbackRate = this._videoRate;
     this._videoContainer.appendChild(this.videoEl);
     // set the player
-    const isSet: boolean = await this._setPlayer();
-    if (isSet) {
-      this.videoEl.onended = async () => {
+      const isSet: boolean = await this._setPlayer();
+      if (isSet) {
+        this.videoEl.textTracks.addEventListener('change', () => {
+          this._emitSubtitleChangeFromTextTracks();
+        });
+        this.videoEl.onended = async () => {
         this._stopPositionUpdates();
         this._isEnded = true;
         this.isPlaying = false;
@@ -182,9 +189,38 @@ export class VideoPlayer {
           }
         }
       };
+      this.videoEl.addEventListener('timeupdate', () => {
+        if (this.videoEl) {
+          this._lastStableTime = this.videoEl.currentTime;
+        }
+      });
+      this.videoEl.addEventListener('seeking', () => {
+        this._seekStartFrom = this._lastStableTime;
+      });
+      this.videoEl.addEventListener('seeked', () => {
+        if (!this.videoEl) {
+          return;
+        }
+        const to = this.videoEl.currentTime;
+        const dur = this.videoEl.duration;
+        const detail: Record<string, string | number> = {
+          fromPlayerId: this._playerId,
+          fromPosition: this._seekStartFrom,
+          toPosition: to,
+        };
+        if (Number.isFinite(dur)) {
+          detail.duration = dur;
+        }
+        document.dispatchEvent(
+          new CustomEvent('videoPlayerSeekCompleted', { detail }),
+        );
+      });
       this.videoEl.oncanplay = async () => {
         if (this._firstReadyToPlay) {
           this._createEvent('Ready', this._playerId);
+          window.setTimeout(() => {
+            this._subtitleBridgeReady = true;
+          }, 850);
           if (this.videoEl != null) {
             this.videoEl.muted = false;
             if (this._mode === 'fullscreen') await this.videoEl.play();
@@ -388,6 +424,48 @@ export class VideoPlayer {
       detail: { fromPlayerId: playerId, currentTime, duration }
     });
     document.dispatchEvent(event);
+  }
+
+  private _emitSubtitleChangeFromTextTracks(): void {
+    if (!this.videoEl) {
+      return;
+    }
+    const tracks = Array.from(this.videoEl.textTracks);
+    const showing = tracks.find((t) => t.mode === 'showing');
+    if (!showing) {
+      this._emitSubtitleChangeResolved('off', undefined);
+      return;
+    }
+    const rawId = showing.id?.replace(/^track-/, '') ?? '';
+    const meta = this._subtitleTracks?.find(
+      (t) => `track-${t.id}` === showing.id || t.id === rawId || t.language === showing.language,
+    );
+    const lang =
+      meta?.language && meta.language.length > 0
+        ? meta.language
+        : showing.language && showing.language.length > 0
+          ? showing.language
+          : 'und';
+    this._emitSubtitleChangeResolved(lang, meta?.id ?? (rawId || undefined));
+  }
+
+  private _emitSubtitleChangeResolved(language: string, trackId?: string): void {
+    if (!this._subtitleBridgeReady || !this.videoEl) {
+      return;
+    }
+    const key = `${language}\u0000${trackId ?? ''}`;
+    if (key === this._lastSubtitleEmitKey) {
+      return;
+    }
+    this._lastSubtitleEmitKey = key;
+    const detail: Record<string, unknown> = {
+      fromPlayerId: this._playerId,
+      language,
+    };
+    if (trackId != null && trackId !== '') {
+      detail.trackId = trackId;
+    }
+    document.dispatchEvent(new CustomEvent('videoPlayerSubtitleChange', { detail }));
   }
   
   private _startPositionUpdates() {
@@ -600,6 +678,7 @@ export class VideoPlayer {
 
     if (trackId === null || trackId === '') {
       this._selectedSubtitleId = null;
+      this._emitSubtitleChangeResolved('off', undefined);
       return true;
     }
 
@@ -612,6 +691,10 @@ export class VideoPlayer {
       selectedTrack.mode = 'showing';
       this._selectedSubtitleId = trackId;
       this.updateSubtitleMenuButton();
+      const meta = this._subtitleTracks?.find((t) => t.id === trackId);
+      const lang =
+        meta?.language && meta.language.length > 0 ? meta.language : 'und';
+      this._emitSubtitleChangeResolved(lang, trackId);
       return true;
     }
 

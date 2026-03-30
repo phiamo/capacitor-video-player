@@ -74,6 +74,24 @@ extension CapacitorVideoPlayerPlugin {
         }
     }
 
+    // MARK: - playerItemSeekCompleted
+
+    @objc func playerItemSeekCompleted(notification: Notification) {
+        guard let info = notification.userInfo as? [String: Any] else { return }
+        DispatchQueue.main.async {
+            self.notifyListeners("jeepCapVideoPlayerSeek", data: info, retainUntilConsumed: true)
+        }
+    }
+
+    // MARK: - playerItemSubtitleChange
+
+    @objc func playerItemSubtitleChange(notification: Notification) {
+        guard let info = notification.userInfo as? [String: Any] else { return }
+        DispatchQueue.main.async {
+            self.notifyListeners("jeepCapVideoPlayerSubtitleChange", data: info, retainUntilConsumed: true)
+        }
+    }
+
     // MARK: - playerFullscreenDismiss
 
     @objc func playerFullscreenDismiss(notification: Notification) {

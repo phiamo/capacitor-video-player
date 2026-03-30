@@ -330,6 +330,28 @@ export interface capPositionUpdateListener {
      */
     duration?: number;
 }
+/**
+ * Payload for `jeepCapVideoPlayerSeek` (seek completed; not high-frequency).
+ */
+export interface capSeekCompletedListener {
+    fromPlayerId?: string;
+    /** Seconds before seek */
+    fromPosition?: number;
+    /** Seconds after seek */
+    toPosition?: number;
+    /** Total duration in seconds when known */
+    duration?: number;
+}
+/**
+ * Payload for `jeepCapVideoPlayerSubtitleChange` (vendor-neutral; map to analytics in the app).
+ */
+export interface capSubtitleChangeListener {
+    fromPlayerId?: string;
+    /** BCP 47 / IETF language tag, `"off"`, or `"und"` */
+    language?: string;
+    /** Stable track id when available */
+    trackId?: string;
+}
 export interface capVideoPlayerResult {
     /**
      * result set to true when successful else false

@@ -1,3 +1,14 @@
+## 8.1.0 (2026-03-30)
+
+### Add Features
+
+- Bridge events `jeepCapVideoPlayerSeek` and `jeepCapVideoPlayerSubtitleChange` (iOS, Android, Web) with documented payloads (`fromPosition` / `toPosition` / `duration`, `language` / optional `trackId`). No analytics SDK added to the plugin.
+
+### Bug Fixes
+
+- Web: document `videoPlayer*` listeners use stable handler references; `initPlayer` re-attaches after teardown; `duration` omitted when unknown (Web/iOS/Android).
+- iOS: subtitle bridge `trackId` prefers manifest `subtitles[].id` when the legible option matches track language.
+
 ## 5.5.1 (2023-12-08)
 
 ### Chores

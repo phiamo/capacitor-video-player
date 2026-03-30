@@ -8,6 +8,16 @@ export declare class CapacitorVideoPlayerWeb extends WebPlugin implements Capaci
     private _players;
     private videoContainer;
     private mode;
+    /** Same function references required for removeEventListener; idempotent add/remove pair. */
+    private _documentListenersAttached;
+    private readonly _onVideoPlayerPlay;
+    private readonly _onVideoPlayerPause;
+    private readonly _onVideoPlayerEnded;
+    private readonly _onVideoPlayerReady;
+    private readonly _onVideoPlayerExit;
+    private readonly _onVideoPlayerPositionUpdate;
+    private readonly _onVideoPlayerSeekCompleted;
+    private readonly _onVideoPlayerSubtitleChange;
     constructor();
     /**
      * Convert legacy single subtitle API to new array format
@@ -145,6 +155,8 @@ export declare class CapacitorVideoPlayerWeb extends WebPlugin implements Capaci
     private handlePlayerExit;
     private handlePlayerReady;
     private handlePlayerPositionUpdate;
+    private handlePlayerSeekCompleted;
+    private handlePlayerSubtitleChange;
     private addListeners;
     private removeListeners;
 }

@@ -41,6 +41,8 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
     var endObserver: Any?
     var readyObserver: Any?
     var positionUpdateObserver: Any?
+    var seekCompletedObserver: Any?
+    var subtitleChangeObserver: Any?
     var fsDismissObserver: Any?
     var backgroundObserver: Any?
     var foregroundObserver: Any?
@@ -72,6 +74,8 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         NotificationCenter.default.removeObserver(endObserver as Any)
         NotificationCenter.default.removeObserver(readyObserver as Any)
         NotificationCenter.default.removeObserver(positionUpdateObserver as Any)
+        NotificationCenter.default.removeObserver(seekCompletedObserver as Any)
+        NotificationCenter.default.removeObserver(subtitleChangeObserver as Any)
         NotificationCenter.default.removeObserver(fsDismissObserver as Any)
         NotificationCenter.default.removeObserver(backgroundObserver as Any)
         NotificationCenter.default.removeObserver(foregroundObserver as Any)
@@ -83,6 +87,8 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
         self.endObserver = nil
         self.readyObserver = nil
         self.positionUpdateObserver = nil
+        self.seekCompletedObserver = nil
+        self.subtitleChangeObserver = nil
         self.fsDismissObserver = nil
         self.backgroundObserver = nil
         self.foregroundObserver = nil

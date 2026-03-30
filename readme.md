@@ -107,10 +107,21 @@ No configuration required for this plugin
 | Name                    | Android | iOS | Electron | Web |
 | :---------------------- | :------ | :-- | :------- | :-- |
 | jeepCapVideoPlayerReady | ✅      | ✅  | ✅       | ✅  |
+| jeepCapVideoPlayerSeek  | ✅      | ✅  | ✅       | ✅  |
+| jeepCapVideoPlayerSubtitleChange | ✅      | ✅  | ✅       | ✅  |
 | jeepCapVideoPlayerPlay  | ✅      | ✅  | ✅       | ✅  |
 | jeepCapVideoPlayerPause | ✅      | ✅  | ✅       | ✅  |
 | jeepCapVideoPlayerEnded | ✅      | ✅  | ✅       | ✅  |
 | jeepCapVideoPlayerExit  | ✅      | ✅  | ✅       | ✅  |
+
+### Seek / subtitle listener payloads
+
+- **`jeepCapVideoPlayerSeek`:** `fromPlayerId`, `fromPosition`, `toPosition` (seconds). `duration` is included only when the duration is known (finite / player ready).
+- **`jeepCapVideoPlayerSubtitleChange`:** `fromPlayerId`, `language` (IETF tag, `off`, or `und`). `trackId` is set when the app supplied manifest `subtitles[].id` can be matched (iOS native menu); otherwise omitted.
+
+### Verification
+
+- Automated: `npm test` runs `npm run build` (TypeScript + bundle). Manual matrix: device/simulator for seek + subtitles on iOS, Android, and Web.
 
 ## Documentation
 

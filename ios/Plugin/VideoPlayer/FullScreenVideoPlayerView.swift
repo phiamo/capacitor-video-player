@@ -125,6 +125,9 @@ open class FullScreenVideoPlayerView: UIView {
     var positionUpdateObserver: Any?
     var mediaSelectionObserver: NSKeyValueObservation?
     private var _positionUpdateInterval: Double = 5.0
+    /// Suppress subtitle bridge events during initial track selection / KVO noise (see analytics subtitle_change notes).
+    private var suppressSubtitleBridgeEvents = true
+    private var subtitleBridgeUnsuppressScheduled = false
 
     init(url: URL, rate: Float, playerId: String, exitOnEnd: Bool,
          loopOnEnd: Bool, pipEnabled: Bool, showControls: Bool,
@@ -1985,6 +1988,24 @@ open class FullScreenVideoPlayerView: UIView {
             Self.logger.debug("   No _selectedSubtitleId set - not selecting any subtitle, letting system decide")
         }
     }
+
+    /// Match `AVMediaSelectionOption` to app `subtitles[].id` from init when language aligns (stable bridge `trackId`).
+    private func resolvedManifestSubtitleTrackId(for option: AVMediaSelectionOption) -> String? {
+        guard let tracks = self._subtitleTracks else { return nil }
+        let extTag = option.extendedLanguageTag?.lowercased()
+        let localeId = option.locale?.identifier.lowercased()
+        let langCode = option.locale?.languageCode?.lowercased()
+        for track in tracks {
+            guard let id = track["id"] as? String else { continue }
+            guard let tLang = (track["language"] as? String)?.lowercased() else { continue }
+            if let extTag = extTag, (extTag == tLang || extTag.hasPrefix(tLang + "-") || extTag.hasPrefix(tLang + "_")) {
+                return id
+            }
+            if let localeId = localeId, localeId.hasPrefix(tLang) { return id }
+            if let langCode = langCode, langCode == tLang { return id }
+        }
+        return nil
+    }
     
     /// Adds observer for media selection changes (when user clicks subtitle option in native menu)
     private func addMediaSelectionObserver() {
@@ -2010,8 +2031,10 @@ open class FullScreenVideoPlayerView: UIView {
             if let option = selectedOption {
                 Self.logger.debug("   ✅ User selected subtitle: lang=\(option.extendedLanguageTag ?? "nil"), locale=\(option.locale?.identifier ?? "nil"), displayName=\(option.displayName)")
                 
-                // Update active subtitle track ID based on selection
-                if let localeId = option.locale?.identifier {
+                let manifestId = self.resolvedManifestSubtitleTrackId(for: option)
+                if let mid = manifestId {
+                    self._activeSubtitleTrackId = mid
+                } else if let localeId = option.locale?.identifier {
                     self._activeSubtitleTrackId = localeId
                 } else if let langTag = option.extendedLanguageTag {
                     self._activeSubtitleTrackId = langTag
@@ -2019,13 +2042,61 @@ open class FullScreenVideoPlayerView: UIView {
                     self._activeSubtitleTrackId = option.displayName
                 }
                 Self.logger.debug("   📝 Updated _activeSubtitleTrackId to: \(self._activeSubtitleTrackId ?? "nil")")
+                let langCode: String
+                if let tag = option.extendedLanguageTag, !tag.isEmpty {
+                    langCode = tag
+                } else if let lid = option.locale?.identifier, !lid.isEmpty {
+                    langCode = lid
+                } else {
+                    langCode = "und"
+                }
+                if !self.suppressSubtitleBridgeEvents {
+                    self.postSubtitleBridgeEvent(language: langCode, trackId: manifestId)
+                }
             } else {
                 Self.logger.debug("   ℹ️ User deselected subtitles (selected nil)")
                 self._activeSubtitleTrackId = nil
+                if !self.suppressSubtitleBridgeEvents {
+                    self.postSubtitleBridgeEvent(language: "off", trackId: nil)
+                }
             }
         }
         
         Self.logger.debug("   ✅ Media selection observer added")
+        self.scheduleSubtitleBridgeUnsuppress()
+    }
+
+    private func scheduleSubtitleBridgeUnsuppress() {
+        guard !self.subtitleBridgeUnsuppressScheduled else { return }
+        self.subtitleBridgeUnsuppressScheduled = true
+        self.suppressSubtitleBridgeEvents = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) { [weak self] in
+            self?.suppressSubtitleBridgeEvents = false
+        }
+    }
+
+    private func postSeekBridgeEvent(fromSeconds: Double, toSeconds: Double) {
+        let rawDuration = self.getDuration()
+        var info: [String: Any] = [
+            "fromPlayerId": self._videoId,
+            "fromPosition": fromSeconds,
+            "toPosition": toSeconds
+        ]
+        if rawDuration.isFinite && rawDuration > 0 {
+            info["duration"] = rawDuration
+        }
+        NotificationCenter.default.post(name: .playerItemSeekCompleted, object: nil, userInfo: info)
+    }
+
+    private func postSubtitleBridgeEvent(language: String, trackId: String?) {
+        var info: [String: Any] = [
+            "fromPlayerId": self._videoId,
+            "language": language
+        ]
+        if let trackId = trackId {
+            info["trackId"] = trackId
+        }
+        NotificationCenter.default.post(name: .playerItemSubtitleChange, object: nil, userInfo: info)
     }
     
     /// Fallback: Custom UILabel subtitle display for HLS when composition creation fails
@@ -2690,8 +2761,14 @@ open class FullScreenVideoPlayerView: UIView {
                     NotificationCenter.default.post(name: .playerItemPlay, object: nil, userInfo: vId)
                 } else if rate == 0 && !isVideoEnded && abs(self._currentTime - self._duration) < 0.2 {
                     self.isPlaying = false
-                    player.seek(to: CMTime.zero)
-                    self._currentTime = 0
+                    let fromLoop = self._currentTime
+                    player.seek(to: CMTime.zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                        guard let self = self, finished else { return }
+                        DispatchQueue.main.async {
+                            self._currentTime = 0
+                            self.postSeekBridgeEvent(fromSeconds: fromLoop, toSeconds: 0)
+                        }
+                    }
                     if /*!isInPIPMode && */self._exitOnEnd {
                         isVideoEnded = true
                         NotificationCenter.default.post(name: .playerItemEnd, object: nil, userInfo: vId)
@@ -2908,9 +2985,15 @@ open class FullScreenVideoPlayerView: UIView {
         }
     }
     @objc func setCurrentTime(time: Double) {
+        let fromSeconds = self.getRealCurrentTime()
         let seekTime: CMTime = CMTimeMake(value: Int64(time*1000), timescale: 1000)
-        self.player?.seek(to: seekTime)
-        self._currentTime = time
+        self.player?.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard let self = self, finished else { return }
+            DispatchQueue.main.async {
+                self._currentTime = time
+                self.postSeekBridgeEvent(fromSeconds: fromSeconds, toSeconds: time)
+            }
+        }
     }
     @objc func getVolume() -> Float {
         if let player = self.player {
@@ -3022,15 +3105,27 @@ open class FullScreenVideoPlayerView: UIView {
         rcc.changePlaybackPositionCommand.isEnabled = true
         rcc.changePlaybackPositionCommand.addTarget {event in
             let seconds = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime ?? 0
+            let fromSeconds = self.getRealCurrentTime()
             let time = CMTime(seconds: seconds, preferredTimescale: 1)
-            self.player?.seek(to: time)
+            self.player?.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                guard let self = self, finished else { return }
+                DispatchQueue.main.async {
+                    self.postSeekBridgeEvent(fromSeconds: fromSeconds, toSeconds: seconds)
+                }
+            }
             return .success
         }
         rcc.skipForwardCommand.isEnabled = true
         rcc.skipForwardCommand.addTarget {event in
             if let player = self.player, let currentItem = player.currentItem {
-                let currentTime = CMTimeGetSeconds(currentItem.currentTime()) + 10
-                self.player?.seek(to: CMTimeMakeWithSeconds(currentTime, preferredTimescale: 1))
+                let fromSeconds = CMTimeGetSeconds(currentItem.currentTime())
+                let currentTime = fromSeconds + 10
+                self.player?.seek(to: CMTimeMakeWithSeconds(currentTime, preferredTimescale: 1), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                    guard let self = self, finished else { return }
+                    DispatchQueue.main.async {
+                        self.postSeekBridgeEvent(fromSeconds: fromSeconds, toSeconds: currentTime)
+                    }
+                }
                 return .success
             } else {
                 return .commandFailed
@@ -3039,8 +3134,14 @@ open class FullScreenVideoPlayerView: UIView {
         rcc.skipBackwardCommand.isEnabled = true
         rcc.skipBackwardCommand.addTarget {event in
             if let player = self.player, let currentItem = player.currentItem {
-                let currentTime = CMTimeGetSeconds(currentItem.currentTime()) - 10
-                self.player?.seek(to: CMTimeMakeWithSeconds(currentTime, preferredTimescale: 1))
+                let fromSeconds = CMTimeGetSeconds(currentItem.currentTime())
+                let currentTime = fromSeconds - 10
+                self.player?.seek(to: CMTimeMakeWithSeconds(currentTime, preferredTimescale: 1), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                    guard let self = self, finished else { return }
+                    DispatchQueue.main.async {
+                        self.postSeekBridgeEvent(fromSeconds: fromSeconds, toSeconds: currentTime)
+                    }
+                }
                 return .success
             } else {
                 return .commandFailed

@@ -49,11 +49,13 @@ import com.getcapacitor.JSObject;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultLoadControl;
 import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.LoadControl;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.MediaMetadata;
 import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
+import com.google.android.exoplayer2.Tracks;
 import com.google.android.exoplayer2.audio.AudioAttributes;
 import com.google.android.exoplayer2.ext.cast.CastPlayer;
 import com.google.android.exoplayer2.ext.cast.SessionAvailabilityListener;
@@ -99,6 +101,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.json.JSONException;
@@ -193,6 +196,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
   };
   private Handler positionUpdateHandler = new Handler(Looper.getMainLooper());
   private Runnable positionUpdateRunnable;
+  private long bridgeReadyAtMs = 0L;
+  private String lastEmittedSubtitleLanguage = null;
+  private String lastEmittedSubtitleTrackId = null;
 
   private Integer resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
   private MediaRouteButton mediaRouteButton;
@@ -342,6 +348,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
               if (firstReadyToPlay) {
                 firstReadyToPlay = false;
+                bridgeReadyAtMs = System.currentTimeMillis();
                 NotificationCenter.defaultCenter().postNotification("playerItemReady", info);
                 
                 // Select initial subtitle track if specified (after player is ready)
@@ -408,6 +415,26 @@ public class FullscreenExoPlayerFragment extends Fragment {
               stateString = "UNKNOWN_STATE             -";
               break;
           }
+        }
+
+        @Override
+        public void onPositionDiscontinuity(
+          Player.PositionInfo oldPosition,
+          Player.PositionInfo newPosition,
+          @Player.DiscontinuityReason int reason
+        ) {
+          if (reason != Player.DISCONTINUITY_REASON_SEEK) {
+            return;
+          }
+          if (System.currentTimeMillis() - bridgeReadyAtMs < 800) {
+            return;
+          }
+          postSeekCompletedNs(oldPosition.positionMs, newPosition.positionMs);
+        }
+
+        @Override
+        public void onTracksChanged(Tracks tracks) {
+          maybeEmitSubtitleFromTracks();
         }
       };
 
@@ -1357,6 +1384,80 @@ public class FullscreenExoPlayerFragment extends Fragment {
    */
   public int getCurrentTime() {
     return player.getCurrentPosition() == UNKNOWN_TIME ? 0 : (int) (player.getCurrentPosition() / 1000);
+  }
+
+  private void postSeekCompletedNs(long fromMs, long toMs) {
+    if (player == null) {
+      return;
+    }
+    long dur = player.getDuration();
+    Map<String, Object> info = new HashMap<>();
+    info.put("fromPlayerId", playerId);
+    info.put("fromPosition", fromMs / 1000.0);
+    info.put("toPosition", toMs / 1000.0);
+    if (dur != UNKNOWN_TIME && dur > 0) {
+      info.put("duration", dur / 1000.0);
+    }
+    NotificationCenter.defaultCenter().postNotification("playerItemSeekCompleted", info);
+  }
+
+  private void postSubtitleChange(String language, String trackId) {
+    Map<String, Object> info = new HashMap<>();
+    info.put("fromPlayerId", playerId);
+    info.put("language", language);
+    if (trackId != null) {
+      info.put("trackId", trackId);
+    }
+    NotificationCenter.defaultCenter().postNotification("playerItemSubtitleChange", info);
+  }
+
+  private void maybeEmitSubtitleFromTracks() {
+    if (player == null || trackSelector == null || !(trackSelector instanceof DefaultTrackSelector)) {
+      return;
+    }
+    if (System.currentTimeMillis() - bridgeReadyAtMs < 800) {
+      return;
+    }
+    DefaultTrackSelector defaultTrackSelector = (DefaultTrackSelector) trackSelector;
+    if (defaultTrackSelector.getParameters().getRendererDisabled(C.TRACK_TYPE_TEXT)) {
+      if (!Objects.equals("off", lastEmittedSubtitleLanguage)) {
+        lastEmittedSubtitleLanguage = "off";
+        lastEmittedSubtitleTrackId = null;
+        postSubtitleChange("off", null);
+      }
+      return;
+    }
+    Tracks tracks = player.getCurrentTracks();
+    String lang = "und";
+    String tid = null;
+    boolean found = false;
+    for (Tracks.Group g : tracks.getGroups()) {
+      if (g.getType() != C.TRACK_TYPE_TEXT) {
+        continue;
+      }
+      for (int i = 0; i < g.length; i++) {
+        if (g.isTrackSelected(i)) {
+          Format f = g.getTrackFormat(i);
+          if (f.language != null && !f.language.isEmpty()) {
+            lang = f.language;
+          } else {
+            lang = "und";
+          }
+          tid = f.id;
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        break;
+      }
+    }
+    if (Objects.equals(lang, lastEmittedSubtitleLanguage) && Objects.equals(tid, lastEmittedSubtitleTrackId)) {
+      return;
+    }
+    lastEmittedSubtitleLanguage = lang;
+    lastEmittedSubtitleTrackId = tid;
+    postSubtitleChange(lang, tid);
   }
 
   /**

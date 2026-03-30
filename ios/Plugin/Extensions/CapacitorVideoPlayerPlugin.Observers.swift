@@ -33,6 +33,12 @@ extension CapacitorVideoPlayerPlugin {
         positionUpdateObserver = NotificationCenter.default
             .addObserver(forName: .playerItemPositionUpdate, object: nil,
                          queue: nil, using: playerItemPositionUpdate)
+        seekCompletedObserver = NotificationCenter.default
+            .addObserver(forName: .playerItemSeekCompleted, object: nil,
+                         queue: nil, using: playerItemSeekCompleted)
+        subtitleChangeObserver = NotificationCenter.default
+            .addObserver(forName: .playerItemSubtitleChange, object: nil,
+                         queue: nil, using: playerItemSubtitleChange)
         fsDismissObserver = NotificationCenter.default
             .addObserver(forName: .playerFullscreenDismiss, object: nil,
                          queue: nil, using: playerFullscreenDismiss)

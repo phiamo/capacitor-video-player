@@ -27,6 +27,33 @@ export class CapacitorVideoPlayerWeb
   private _players: any = [];
   private videoContainer!: HTMLDivElement | null;
   private mode!: string;
+  /** Same function references required for removeEventListener; idempotent add/remove pair. */
+  private _documentListenersAttached = false;
+
+  private readonly _onVideoPlayerPlay = (ev: Event): void => {
+    this.handlePlayerPlay((ev as CustomEvent).detail);
+  };
+  private readonly _onVideoPlayerPause = (ev: Event): void => {
+    this.handlePlayerPause((ev as CustomEvent).detail);
+  };
+  private readonly _onVideoPlayerEnded = (ev: Event): void => {
+    this.handlePlayerEnded((ev as CustomEvent).detail);
+  };
+  private readonly _onVideoPlayerReady = (ev: Event): void => {
+    this.handlePlayerReady((ev as CustomEvent).detail);
+  };
+  private readonly _onVideoPlayerExit = (): void => {
+    this.handlePlayerExit();
+  };
+  private readonly _onVideoPlayerPositionUpdate = (ev: Event): void => {
+    this.handlePlayerPositionUpdate((ev as CustomEvent).detail);
+  };
+  private readonly _onVideoPlayerSeekCompleted = (ev: Event): void => {
+    this.handlePlayerSeekCompleted((ev as CustomEvent).detail);
+  };
+  private readonly _onVideoPlayerSubtitleChange = (ev: Event): void => {
+    this.handlePlayerSubtitleChange((ev as CustomEvent).detail);
+  };
 
   constructor() {
     super();
@@ -150,6 +177,8 @@ export class CapacitorVideoPlayerWeb
       const positionUpdateInterval = options.positionUpdateInterval && options.positionUpdateInterval > 0 
         ? options.positionUpdateInterval 
         : 5;
+
+      this.addListeners();
 
       const result = await this._initializeVideoPlayer(
         url,
@@ -935,46 +964,64 @@ export class CapacitorVideoPlayerWeb
   private handlePlayerPositionUpdate(data: any) {
     this.notifyListeners('jeepCapVideoPlayerPositionUpdate', data);
   }
+  private handlePlayerSeekCompleted(data: any) {
+    this.notifyListeners('jeepCapVideoPlayerSeek', data);
+  }
+  private handlePlayerSubtitleChange(data: any) {
+    this.notifyListeners('jeepCapVideoPlayerSubtitleChange', data);
+  }
 
   private addListeners() {
-    document.addEventListener('videoPlayerPlay', (ev: any) => {
-      this.handlePlayerPlay(ev.detail);
-    },false);
-    document.addEventListener('videoPlayerPause', (ev: any) => {
-      this.handlePlayerPause(ev.detail);
-    },false);
-    document.addEventListener('videoPlayerEnded', (ev: any) => {
-      this.handlePlayerEnded(ev.detail);
-    },false);
-    document.addEventListener('videoPlayerReady', (ev: any) => {
-      this.handlePlayerReady(ev.detail);
-    },false);
-    document.addEventListener('videoPlayerExit', () => {
-      this.handlePlayerExit();
-    },false);
-    document.addEventListener('videoPlayerPositionUpdate', (ev: any) => {
-      this.handlePlayerPositionUpdate(ev.detail);
-    },false);
+    if (this._documentListenersAttached) {
+      return;
+    }
+    document.addEventListener('videoPlayerPlay', this._onVideoPlayerPlay, false);
+    document.addEventListener('videoPlayerPause', this._onVideoPlayerPause, false);
+    document.addEventListener('videoPlayerEnded', this._onVideoPlayerEnded, false);
+    document.addEventListener('videoPlayerReady', this._onVideoPlayerReady, false);
+    document.addEventListener('videoPlayerExit', this._onVideoPlayerExit, false);
+    document.addEventListener(
+      'videoPlayerPositionUpdate',
+      this._onVideoPlayerPositionUpdate,
+      false,
+    );
+    document.addEventListener(
+      'videoPlayerSeekCompleted',
+      this._onVideoPlayerSeekCompleted,
+      false,
+    );
+    document.addEventListener(
+      'videoPlayerSubtitleChange',
+      this._onVideoPlayerSubtitleChange,
+      false,
+    );
+    this._documentListenersAttached = true;
   }
 
   private removeListeners() {
-    document.removeEventListener('videoPlayerPlay', (ev: any) => {
-      this.handlePlayerPlay(ev.detail);
-    },false);
-    document.removeEventListener('videoPlayerPause', (ev: any) => {
-      this.handlePlayerPause(ev.detail);
-    },false);
-    document.removeEventListener('videoPlayerEnded', (ev: any) => {
-      this.handlePlayerEnded(ev.detail);
-    },false);
-    document.removeEventListener('videoPlayerReady', (ev: any) => {
-      this.handlePlayerReady(ev.detail);
-    },false);
-    document.removeEventListener('videoPlayerExit', () => {
-      this.handlePlayerExit();
-    },false);
-    document.removeEventListener('videoPlayerPositionUpdate', (ev: any) => {
-      this.handlePlayerPositionUpdate(ev.detail);
-    },false);
+    if (!this._documentListenersAttached) {
+      return;
+    }
+    document.removeEventListener('videoPlayerPlay', this._onVideoPlayerPlay, false);
+    document.removeEventListener('videoPlayerPause', this._onVideoPlayerPause, false);
+    document.removeEventListener('videoPlayerEnded', this._onVideoPlayerEnded, false);
+    document.removeEventListener('videoPlayerReady', this._onVideoPlayerReady, false);
+    document.removeEventListener('videoPlayerExit', this._onVideoPlayerExit, false);
+    document.removeEventListener(
+      'videoPlayerPositionUpdate',
+      this._onVideoPlayerPositionUpdate,
+      false,
+    );
+    document.removeEventListener(
+      'videoPlayerSeekCompleted',
+      this._onVideoPlayerSeekCompleted,
+      false,
+    );
+    document.removeEventListener(
+      'videoPlayerSubtitleChange',
+      this._onVideoPlayerSubtitleChange,
+      false,
+    );
+    this._documentListenersAttached = false;
   }
 }

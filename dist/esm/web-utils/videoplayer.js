@@ -16,6 +16,10 @@ export class VideoPlayer {
         this._subtitleMenuButton = null;
         this._subtitleMenu = null;
         this._positionUpdateInterval = 5;
+        this._lastStableTime = 0;
+        this._seekStartFrom = 0;
+        this._subtitleBridgeReady = false;
+        this._lastSubtitleEmitKey = '';
         this._url = url;
         this._container = container;
         this._mode = mode;
@@ -111,6 +115,9 @@ export class VideoPlayer {
         // set the player
         const isSet = await this._setPlayer();
         if (isSet) {
+            this.videoEl.textTracks.addEventListener('change', () => {
+                this._emitSubtitleChangeFromTextTracks();
+            });
             this.videoEl.onended = async () => {
                 this._stopPositionUpdates();
                 this._isEnded = true;
@@ -130,9 +137,36 @@ export class VideoPlayer {
                     }
                 }
             };
+            this.videoEl.addEventListener('timeupdate', () => {
+                if (this.videoEl) {
+                    this._lastStableTime = this.videoEl.currentTime;
+                }
+            });
+            this.videoEl.addEventListener('seeking', () => {
+                this._seekStartFrom = this._lastStableTime;
+            });
+            this.videoEl.addEventListener('seeked', () => {
+                if (!this.videoEl) {
+                    return;
+                }
+                const to = this.videoEl.currentTime;
+                const dur = this.videoEl.duration;
+                const detail = {
+                    fromPlayerId: this._playerId,
+                    fromPosition: this._seekStartFrom,
+                    toPosition: to,
+                };
+                if (Number.isFinite(dur)) {
+                    detail.duration = dur;
+                }
+                document.dispatchEvent(new CustomEvent('videoPlayerSeekCompleted', { detail }));
+            });
             this.videoEl.oncanplay = async () => {
                 if (this._firstReadyToPlay) {
                     this._createEvent('Ready', this._playerId);
+                    window.setTimeout(() => {
+                        this._subtitleBridgeReady = true;
+                    }, 850);
                     if (this.videoEl != null) {
                         this.videoEl.muted = false;
                         if (this._mode === 'fullscreen')
@@ -330,6 +364,44 @@ export class VideoPlayer {
         });
         document.dispatchEvent(event);
     }
+    _emitSubtitleChangeFromTextTracks() {
+        var _a, _b, _c, _d;
+        if (!this.videoEl) {
+            return;
+        }
+        const tracks = Array.from(this.videoEl.textTracks);
+        const showing = tracks.find((t) => t.mode === 'showing');
+        if (!showing) {
+            this._emitSubtitleChangeResolved('off', undefined);
+            return;
+        }
+        const rawId = (_b = (_a = showing.id) === null || _a === void 0 ? void 0 : _a.replace(/^track-/, '')) !== null && _b !== void 0 ? _b : '';
+        const meta = (_c = this._subtitleTracks) === null || _c === void 0 ? void 0 : _c.find((t) => `track-${t.id}` === showing.id || t.id === rawId || t.language === showing.language);
+        const lang = (meta === null || meta === void 0 ? void 0 : meta.language) && meta.language.length > 0
+            ? meta.language
+            : showing.language && showing.language.length > 0
+                ? showing.language
+                : 'und';
+        this._emitSubtitleChangeResolved(lang, (_d = meta === null || meta === void 0 ? void 0 : meta.id) !== null && _d !== void 0 ? _d : (rawId || undefined));
+    }
+    _emitSubtitleChangeResolved(language, trackId) {
+        if (!this._subtitleBridgeReady || !this.videoEl) {
+            return;
+        }
+        const key = `${language}\u0000${trackId !== null && trackId !== void 0 ? trackId : ''}`;
+        if (key === this._lastSubtitleEmitKey) {
+            return;
+        }
+        this._lastSubtitleEmitKey = key;
+        const detail = {
+            fromPlayerId: this._playerId,
+            language,
+        };
+        if (trackId != null && trackId !== '') {
+            detail.trackId = trackId;
+        }
+        document.dispatchEvent(new CustomEvent('videoPlayerSubtitleChange', { detail }));
+    }
     _startPositionUpdates() {
         this._stopPositionUpdates();
         if (this.videoEl && this._positionUpdateInterval > 0) {
@@ -514,6 +586,7 @@ export class VideoPlayer {
      * Select a subtitle track by ID
      */
     async selectSubtitleTrack(trackId) {
+        var _a;
         if (!this.videoEl)
             return false;
         const tracks = Array.from(this.videoEl.textTracks);
@@ -523,6 +596,7 @@ export class VideoPlayer {
         });
         if (trackId === null || trackId === '') {
             this._selectedSubtitleId = null;
+            this._emitSubtitleChangeResolved('off', undefined);
             return true;
         }
         // Find and show the selected track
@@ -531,6 +605,9 @@ export class VideoPlayer {
             selectedTrack.mode = 'showing';
             this._selectedSubtitleId = trackId;
             this.updateSubtitleMenuButton();
+            const meta = (_a = this._subtitleTracks) === null || _a === void 0 ? void 0 : _a.find((t) => t.id === trackId);
+            const lang = (meta === null || meta === void 0 ? void 0 : meta.language) && meta.language.length > 0 ? meta.language : 'und';
+            this._emitSubtitleChangeResolved(lang, trackId);
             return true;
         }
         return false;
