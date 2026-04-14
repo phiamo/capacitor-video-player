@@ -25,6 +25,8 @@ export class CapacitorVideoPlayerWeb
   implements CapacitorVideoPlayerPlugin
 {
   private _players: any = [];
+  /** Web: mirrors native last-known storage for `getLastKnownPosition`. */
+  private _lastKnownByPlayerId: Record<string, number> = {};
   private videoContainer!: HTMLDivElement | null;
   private mode!: string;
   /** Same function references required for removeEventListener; idempotent add/remove pair. */
@@ -607,6 +609,22 @@ export class CapacitorVideoPlayerWeb
       });
     }
   }
+
+  async getLastKnownPosition(
+    options: capVideoPlayerIdOptions,
+  ): Promise<capVideoPlayerResult> {
+    let playerId = options?.playerId ? options.playerId : '';
+    if (playerId == null || playerId.length === 0) {
+      playerId = 'fullscreen';
+    }
+    const v = this._lastKnownByPlayerId[playerId] ?? 0;
+    return Promise.resolve({
+      method: 'getLastKnownPosition',
+      result: true,
+      value: v,
+    });
+  }
+
   /**
    * Get the current time of the current video from a given playerId
    *
@@ -962,6 +980,11 @@ export class CapacitorVideoPlayerWeb
     this.notifyListeners('jeepCapVideoPlayerReady', data);
   }
   private handlePlayerPositionUpdate(data: any) {
+    const pid = data?.fromPlayerId != null ? String(data.fromPlayerId) : '';
+    const ct = data?.currentTime;
+    if (pid.length > 0 && typeof ct === 'number' && Number.isFinite(ct)) {
+      this._lastKnownByPlayerId[pid] = ct;
+    }
     this.notifyListeners('jeepCapVideoPlayerPositionUpdate', data);
   }
   private handlePlayerSeekCompleted(data: any) {

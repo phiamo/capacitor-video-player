@@ -49,6 +49,8 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
     var vpInternalObserver: Any?
     var isPlayerDismissed: Bool = false
     let rateList: [Float] = [0.25, 0.5, 0.75, 1.0, 2.0, 4.0]
+    /// Persisted per `playerId` when `jeepCapVideoPlayerPositionUpdate` fires (Epic 45 / PR-2 fallback).
+    static let lastKnownPositionKeyPrefix = "CapacitorVideoPlayer.lastKnownPosition."
 
     override public func load() {
         self.addObserversToNotificationCenter()
@@ -487,6 +489,20 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin {
             }
 
         }
+    }
+
+    // MARK: - getLastKnownPosition (persisted on each position tick; survives WebView suspend)
+
+    @objc func getLastKnownPosition(_ call: CAPPluginCall) {
+        guard let playerId = call.options["playerId"] as? String else {
+            let error: String = "Must provide a playerId"
+            Self.logger.error("\(error, privacy: .public)")
+            call.resolve([ "result": false, "method": "getLastKnownPosition", "message": error])
+            return
+        }
+        let key = Self.lastKnownPositionKeyPrefix + playerId
+        let stored = UserDefaults.standard.double(forKey: key)
+        call.resolve([ "result": true, "method": "getLastKnownPosition", "value": stored])
     }
 
     // MARK: - set CurrentTime for the given player

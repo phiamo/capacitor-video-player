@@ -1,3 +1,9 @@
+## 8.2.0 (2026-04-14)
+
+### Add Features
+
+- **`getLastKnownPosition`**: returns last playback head (seconds) persisted when `jeepCapVideoPlayerPositionUpdate` fires (iOS `UserDefaults`, Android `SharedPreferences`, Web in-memory). Used when the WebView is suspended or bridge events pause (Epic 45 / architecture PR-2).
+
 ## 8.1.0 (2026-03-30)
 
 ### Add Features

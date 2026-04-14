@@ -68,6 +68,19 @@ extension CapacitorVideoPlayerPlugin {
 
     @objc func playerItemPositionUpdate(notification: Notification) {
         guard let info = notification.userInfo as? [String: Any] else { return }
+        if let playerId = info["fromPlayerId"] as? String {
+            let ct = info["currentTime"]
+            var seconds: Double = 0
+            if let d = ct as? Double {
+                seconds = d
+            } else if let f = ct as? Float {
+                seconds = Double(f)
+            } else if let i = ct as? Int {
+                seconds = Double(i)
+            }
+            let key = CapacitorVideoPlayerPlugin.lastKnownPositionKeyPrefix + playerId
+            UserDefaults.standard.set(seconds, forKey: key)
+        }
         DispatchQueue.main.async {
             self.notifyListeners("jeepCapVideoPlayerPositionUpdate", data: info, retainUntilConsumed: false)
             return

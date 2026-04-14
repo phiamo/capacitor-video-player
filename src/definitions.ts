@@ -37,6 +37,13 @@ export interface CapacitorVideoPlayerPlugin {
     options: capVideoPlayerIdOptions,
   ): Promise<capVideoPlayerResult>;
   /**
+   * Last playback head (seconds) persisted on native when position ticks fire;
+   * survives WebView suspension (Epic 45 / PR-2).
+   */
+  getLastKnownPosition(
+    options: capVideoPlayerIdOptions,
+  ): Promise<capVideoPlayerResult>;
+  /**
    * Set the current time to seek the current video to from a given playerId
    *
    */

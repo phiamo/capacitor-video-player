@@ -11,6 +11,7 @@ CAP_PLUGIN(CapacitorVideoPlayerPlugin, "CapacitorVideoPlayer",
            CAP_PLUGIN_METHOD(pause, CAPPluginReturnPromise);
            CAP_PLUGIN_METHOD(getDuration, CAPPluginReturnPromise);
            CAP_PLUGIN_METHOD(getCurrentTime, CAPPluginReturnPromise);
+           CAP_PLUGIN_METHOD(getLastKnownPosition, CAPPluginReturnPromise);
            CAP_PLUGIN_METHOD(setCurrentTime, CAPPluginReturnPromise);
            CAP_PLUGIN_METHOD(getVolume, CAPPluginReturnPromise);
            CAP_PLUGIN_METHOD(setVolume, CAPPluginReturnPromise);

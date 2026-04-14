@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.UiModeManager;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.os.Build;
@@ -54,6 +55,8 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
 
     private CapacitorVideoPlayer implementation;
     private static final String TAG = "CapacitorVideoPlayer";
+    private static final String PREFS_LAST_KNOWN = "CapacitorVideoPlayer.lastKnown";
+    private static final String KEY_PREFIX_LAST_POS = "lastKnownPosition.";
     private final int frameLayoutViewId = 256;
     private final int pickerLayoutViewId = 257;
 
@@ -101,6 +104,22 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
       implementation = new CapacitorVideoPlayer(this.context);
       this.filesUtils = new FilesUtils(this.context);
       this.fragmentUtils = new FragmentUtils(getBridge());
+  }
+
+  private void persistLastKnownVideoPosition(String playerId, double seconds) {
+    if (this.context == null || playerId == null) {
+      return;
+    }
+    SharedPreferences p = this.context.getSharedPreferences(PREFS_LAST_KNOWN, Context.MODE_PRIVATE);
+    p.edit().putFloat(KEY_PREFIX_LAST_POS + playerId, (float) seconds).apply();
+  }
+
+  private float readLastKnownVideoPosition(String playerId) {
+    if (this.context == null || playerId == null) {
+      return 0f;
+    }
+    return this.context.getSharedPreferences(PREFS_LAST_KNOWN, Context.MODE_PRIVATE)
+        .getFloat(KEY_PREFIX_LAST_POS + playerId, 0f);
   }
 
   @PermissionCallback
@@ -518,6 +537,23 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
             ret.put("message", "player is not defined");
             call.resolve(ret);
         }
+    }
+
+    @PluginMethod
+    public void getLastKnownPosition(final PluginCall call) {
+        this.call = call;
+        JSObject ret = new JSObject();
+        ret.put("method", "getLastKnownPosition");
+        String playerId = call.getString("playerId");
+        if (playerId == null) {
+            ret.put("result", false);
+            ret.put("message", "Must provide a PlayerId");
+            call.resolve(ret);
+            return;
+        }
+        ret.put("result", true);
+        ret.put("value", (double) readLastKnownVideoPosition(playerId));
+        call.resolve(ret);
     }
 
     @PluginMethod
@@ -1139,9 +1175,18 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         }
                         if (durationObj instanceof String) {
                             data.put("duration", Double.parseDouble((String) durationObj));
-                        } else if (durationObj != null) {
+                        } else                         if (durationObj != null) {
                             data.put("duration", durationObj);
                         }
+                        String pid = (String) this.getInfo().get("fromPlayerId");
+                        Object cto = this.getInfo().get("currentTime");
+                        double sec = 0;
+                        if (cto instanceof String) {
+                          sec = Double.parseDouble((String) cto);
+                        } else if (cto instanceof Number) {
+                          sec = ((Number) cto).doubleValue();
+                        }
+                        persistLastKnownVideoPosition(pid, sec);
                         notifyListeners("jeepCapVideoPlayerPositionUpdate", data);
                         return;
                     }

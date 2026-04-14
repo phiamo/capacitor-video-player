@@ -6,6 +6,8 @@ export interface IPlayerSize {
 }
 export declare class CapacitorVideoPlayerWeb extends WebPlugin implements CapacitorVideoPlayerPlugin {
     private _players;
+    /** Web: mirrors native last-known storage for `getLastKnownPosition`. */
+    private _lastKnownByPlayerId;
     private videoContainer;
     private mode;
     /** Same function references required for removeEventListener; idempotent add/remove pair. */
@@ -105,6 +107,7 @@ export declare class CapacitorVideoPlayerWeb extends WebPlugin implements Capaci
      * @param options
      */
     getCurrentTime(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    getLastKnownPosition(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
     /**
      * Get the current time of the current video from a given playerId
      *

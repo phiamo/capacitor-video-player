@@ -4,6 +4,8 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
     constructor() {
         super();
         this._players = [];
+        /** Web: mirrors native last-known storage for `getLastKnownPosition`. */
+        this._lastKnownByPlayerId = {};
         /** Same function references required for removeEventListener; idempotent add/remove pair. */
         this._documentListenersAttached = false;
         this._onVideoPlayerPlay = (ev) => {
@@ -545,6 +547,19 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
             });
         }
     }
+    async getLastKnownPosition(options) {
+        var _a;
+        let playerId = (options === null || options === void 0 ? void 0 : options.playerId) ? options.playerId : '';
+        if (playerId == null || playerId.length === 0) {
+            playerId = 'fullscreen';
+        }
+        const v = (_a = this._lastKnownByPlayerId[playerId]) !== null && _a !== void 0 ? _a : 0;
+        return Promise.resolve({
+            method: 'getLastKnownPosition',
+            result: true,
+            value: v,
+        });
+    }
     /**
      * Get the current time of the current video from a given playerId
      *
@@ -848,6 +863,11 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
         this.notifyListeners('jeepCapVideoPlayerReady', data);
     }
     handlePlayerPositionUpdate(data) {
+        const pid = (data === null || data === void 0 ? void 0 : data.fromPlayerId) != null ? String(data.fromPlayerId) : '';
+        const ct = data === null || data === void 0 ? void 0 : data.currentTime;
+        if (pid.length > 0 && typeof ct === 'number' && Number.isFinite(ct)) {
+            this._lastKnownByPlayerId[pid] = ct;
+        }
         this.notifyListeners('jeepCapVideoPlayerPositionUpdate', data);
     }
     handlePlayerSeekCompleted(data) {
