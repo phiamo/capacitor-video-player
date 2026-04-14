@@ -1175,10 +1175,11 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         }
                         if (durationObj instanceof String) {
                             data.put("duration", Double.parseDouble((String) durationObj));
-                        } else                         if (durationObj != null) {
+                        } else if (durationObj != null) {
                             data.put("duration", durationObj);
                         }
-                        String pid = (String) this.getInfo().get("fromPlayerId");
+                        Object pidObj = this.getInfo().get("fromPlayerId");
+                        String pid = pidObj instanceof String ? (String) pidObj : null;
                         Object cto = this.getInfo().get("currentTime");
                         double sec = 0;
                         if (cto instanceof String) {

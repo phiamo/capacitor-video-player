@@ -980,7 +980,9 @@ export class CapacitorVideoPlayerWeb
     this.notifyListeners('jeepCapVideoPlayerReady', data);
   }
   private handlePlayerPositionUpdate(data: any) {
-    const pid = data?.fromPlayerId != null ? String(data.fromPlayerId) : '';
+    // `fromPlayerId` mirrors the native key; fall back to `playerId` for defensive coverage.
+    const rawId = data?.fromPlayerId ?? data?.playerId;
+    const pid = rawId != null ? String(rawId) : '';
     const ct = data?.currentTime;
     if (pid.length > 0 && typeof ct === 'number' && Number.isFinite(ct)) {
       this._lastKnownByPlayerId[pid] = ct;
