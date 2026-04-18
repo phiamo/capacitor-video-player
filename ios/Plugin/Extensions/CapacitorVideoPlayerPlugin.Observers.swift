@@ -50,6 +50,16 @@ extension CapacitorVideoPlayerPlugin {
             NotificationCenter.default.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification,
                 object: nil, queue: nil) { (_) in
+                // FR108: emit before video track detach so currentTime is still reliable
+                if let playerView = self.videoPlayerFullScreenView,
+                   !isInPIPMode,
+                   playerView.isPlaying {
+                    let currentTime = playerView.getCurrentTime()
+                    self.notifyListeners("jeepCapVideoPlayerBackground", data: [
+                        "fromPlayerId": self.fsPlayerId,
+                        "currentTime": currentTime
+                    ])
+                }
                 if self.backModeEnabled {
                     isInBackgroundMode = true
                     if !isInPIPMode &&
