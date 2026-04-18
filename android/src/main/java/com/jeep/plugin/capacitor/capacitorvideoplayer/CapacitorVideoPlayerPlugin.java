@@ -47,6 +47,8 @@ import org.json.JSONObject;
 )
 public class CapacitorVideoPlayerPlugin extends Plugin {
 
+    private static CapacitorVideoPlayerPlugin pluginInstance;
+
     // Permission alias constants
     private static final String PERMISSION_DENIED_ERROR = "Unable to access media videos, user denied permission request";
 
@@ -99,11 +101,29 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
 
   @Override
   public void load() {
+      pluginInstance = this;
       // Get context
       this.context = getContext();
       implementation = new CapacitorVideoPlayer(this.context);
       this.filesUtils = new FilesUtils(this.context);
       this.fragmentUtils = new FragmentUtils(getBridge());
+  }
+
+  @Override
+  protected void handleOnDestroy() {
+      if (pluginInstance == this) {
+          pluginInstance = null;
+      }
+      super.handleOnDestroy();
+  }
+
+  public static CapacitorVideoPlayerPlugin getInstance() {
+      return pluginInstance;
+  }
+
+  /** Exposed for {@link FullscreenExoPlayerFragment}; {@link Plugin#notifyListeners} is protected. */
+  public void notifyJeepCapVideoPlayerBackground(JSObject data) {
+      notifyListeners("jeepCapVideoPlayerBackground", data);
   }
 
   private void persistLastKnownVideoPosition(String playerId, double seconds) {

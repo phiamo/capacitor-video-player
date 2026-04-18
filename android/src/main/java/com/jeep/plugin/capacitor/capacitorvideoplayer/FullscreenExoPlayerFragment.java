@@ -145,6 +145,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private boolean playWhenReady = true;
   private boolean firstReadyToPlay = true;
   private boolean isEnded = false;
+  /** Mirrors ExoPlayer playback; used to avoid background events when paused. */
+  private boolean isVideoPlaying = false;
   private int currentWindow = 0;
   private long playbackPosition = 0;
   private Uri uri = null;
@@ -314,6 +316,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     listener =
       new Player.Listener() {
+        @Override
+        public void onIsPlayingChanged(boolean playing) {
+          isVideoPlaying = playing;
+        }
+
         @Override
         public void onPlayerStateChanged(boolean playWhenReady, int state) {
           String stateString;
@@ -712,6 +719,28 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   /**
+   * When the activity stops (e.g. app backgrounded), notify JS if ExoPlayer is actively playing.
+   * Skips Picture-in-Picture where {@link Activity#isInPictureInPictureMode()} is true.
+   */
+  private void notifyAppBackgroundWhilePlayingIfNeeded() {
+    if (!isVideoPlaying || player == null) {
+      return;
+    }
+    Activity activity = getActivity();
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && activity != null && activity.isInPictureInPictureMode()) {
+      return;
+    }
+    CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+    if (plugin == null) {
+      return;
+    }
+    JSObject data = new JSObject();
+    data.put("fromPlayerId", playerId != null ? playerId : "fullscreen");
+    data.put("currentTime", player.getCurrentPosition() / 1000.0);
+    plugin.notifyJeepCapVideoPlayerBackground(data);
+  }
+
+  /**
    * Perform onStart Action
    */
   @Override
@@ -741,6 +770,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
   @Override
   public void onStop() {
     super.onStop();
+    notifyAppBackgroundWhilePlayingIfNeeded();
     boolean isAppBackground = false;
     if (bkModeEnabled) isAppBackground = isApplicationSentToBackground(context);
     if (isInPictureInPictureMode) {
@@ -796,6 +826,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
    */
   public void releasePlayer() {
     stopPositionUpdates();
+    isVideoPlaying = false;
     if (player != null) {
       playWhenReady = player.getPlayWhenReady();
       playbackPosition = player.getCurrentPosition();

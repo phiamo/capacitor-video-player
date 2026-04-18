@@ -1678,7 +1678,10 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             this.notifyListeners('jeepCapVideoPlayerReady', data);
         }
         handlePlayerPositionUpdate(data) {
-            const pid = (data === null || data === void 0 ? void 0 : data.fromPlayerId) != null ? String(data.fromPlayerId) : '';
+            var _a;
+            // `fromPlayerId` mirrors the native key; fall back to `playerId` for defensive coverage.
+            const rawId = (_a = data === null || data === void 0 ? void 0 : data.fromPlayerId) !== null && _a !== void 0 ? _a : data === null || data === void 0 ? void 0 : data.playerId;
+            const pid = rawId != null ? String(rawId) : '';
             const ct = data === null || data === void 0 ? void 0 : data.currentTime;
             if (pid.length > 0 && typeof ct === 'number' && Number.isFinite(ct)) {
                 this._lastKnownByPlayerId[pid] = ct;

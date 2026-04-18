@@ -1,3 +1,15 @@
+import type { PluginListenerHandle } from '@capacitor/core';
+
+/**
+ * Payload for the jeepCapVideoPlayerBackground event (Android: app backgrounded while playing).
+ */
+export interface capVideoPlayerBackgroundData {
+  /** The player id that was playing when the app was backgrounded */
+  fromPlayerId: string;
+  /** Playback position in seconds at the moment of backgrounding */
+  currentTime: number;
+}
+
 export interface CapacitorVideoPlayerPlugin {
   /**
    * Echo
@@ -131,6 +143,11 @@ export interface CapacitorVideoPlayerPlugin {
   getSelectedSubtitleTrack(
     options: capVideoPlayerIdOptions,
   ): Promise<capVideoPlayerResult>;
+
+  addListener(
+    eventName: 'jeepCapVideoPlayerBackground',
+    listenerFunc: (data: capVideoPlayerBackgroundData) => void,
+  ): Promise<PluginListenerHandle>;
 }
 export interface capEchoOptions {
   /**
