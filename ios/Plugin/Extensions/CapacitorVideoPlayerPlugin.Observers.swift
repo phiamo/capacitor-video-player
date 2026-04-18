@@ -49,7 +49,7 @@ extension CapacitorVideoPlayerPlugin {
         backgroundObserver =
             NotificationCenter.default.addObserver(
                 forName: UIApplication.didEnterBackgroundNotification,
-                object: nil, queue: nil) { (_) in
+                object: nil, queue: OperationQueue.main) { (_) in
                 // FR108: emit before video track detach so currentTime is still reliable
                 if let playerView = self.videoPlayerFullScreenView,
                    !isInPIPMode,
@@ -89,7 +89,7 @@ extension CapacitorVideoPlayerPlugin {
                     isInBackgroundMode = false
                     if !isInPIPMode && self.bgPlayer != nil &&
                         self.videoPlayerFullScreenView != nil {
-                        //enable video track
+                        // enable video track
                         if let playerItem =
                             self.videoPlayerFullScreenView?.playerItem {
                             self.videoTrackEnable(playerItem: playerItem,
