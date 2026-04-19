@@ -1,3 +1,11 @@
+# Changelog
+
+## [8.2.1] - 2026-04-19
+
+### Fixed
+- **Android (Story 45.x):** `FullscreenExoPlayerFragment.onStop()` no longer calls `getActivity().finishAndRemoveTask()` when PiP mode is active. Previously this call killed the entire Capacitor Activity before the JS layer could run `endVideoSession()`, leaving the audio session unreleased and blocking resume-after-PiP. The fragment cleanup is now driven by the existing `playerFullscreenDismiss` notification path which emits `jeepCapVideoPlayerExit` to the WebView, allowing `endVideoSession` to restore the audio session and resume audio at the correct position.
+- **Android (Story 45.x):** `onStart()` when `styledPlayerView` is null no longer calls `finishAndRemoveTask()` (same full-app kill as the old PiP path). It now logs and calls `playerExit()` so JS can receive the normal dismiss notification.
+
 ## 8.2.0 (2026-04-14)
 
 ### Add Features

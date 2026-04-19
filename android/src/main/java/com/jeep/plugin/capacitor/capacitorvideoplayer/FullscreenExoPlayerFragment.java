@@ -759,7 +759,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
           play();
         }
       } else {
-        getActivity().finishAndRemoveTask();
+        // Story 45.x: avoid finishAndRemoveTask — same class of bug as PiP onStop (kills the whole Capacitor activity).
+        Log.w(TAG, "onStart: styledPlayerView is null — dismissing via playerExit() only");
+        playerExit();
       }
     }
   }
@@ -776,7 +778,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
     if (isInPictureInPictureMode) {
       linearLayout.setVisibility(View.VISIBLE);
       playerExit();
-      getActivity().finishAndRemoveTask();
+      // Story 45.x: do NOT call finishAndRemoveTask() here — it kills the entire Capacitor
+      // Activity before JS can run endVideoSession(). The playerFullscreenDismiss notification
+      // (fired inside playerExit -> backPressed -> ... CapacitorVideoPlayerPlugin) already
+      // emits jeepCapVideoPlayerExit which gives the WebView layer a chance to call
+      // endVideoSession and restore the audio session cleanly.
+      isInPictureInPictureMode = false;
     }
   }
 
