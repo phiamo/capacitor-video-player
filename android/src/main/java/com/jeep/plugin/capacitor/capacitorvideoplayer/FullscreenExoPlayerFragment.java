@@ -1401,10 +1401,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   private void adjustAspectRatio() {
-    if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-      styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-    } else if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
-      styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-    }
+    styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+    resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
+    resizeBtn.setImageResource(R.drawable.ic_expand);
   }
 }
