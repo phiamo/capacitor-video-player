@@ -1846,14 +1846,17 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   private void adjustAspectRatio() {
-    // Check if fragment is properly attached and has a valid view
-    if (!isAdded() || getView() == null || styledPlayerView == null) {
+    if (!isAdded() || getView() == null || styledPlayerView == null || resizeBtn == null) {
       return;
     }
     if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
       styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+      resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FILL;
+      resizeBtn.setImageResource(R.drawable.ic_zoom);
     } else if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
       styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+      resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
+      resizeBtn.setImageResource(R.drawable.ic_expand);
     }
   }
 }
