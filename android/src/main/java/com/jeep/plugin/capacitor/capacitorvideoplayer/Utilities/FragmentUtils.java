@@ -13,20 +13,25 @@ public class FragmentUtils {
         this.bridge = bridge;
     }
 
+    private void commitTransaction(FragmentManager fm, FragmentTransaction fragmentTransaction) {
+        if (fm.isStateSaved()) {
+            fragmentTransaction.commitAllowingStateLoss();
+        } else {
+            fragmentTransaction.commit();
+        }
+    }
+
     public void loadFragment(Fragment vpFragment, int frameLayoutId) {
-        // create a FragmentManager
         FragmentManager fm = bridge.getActivity().getSupportFragmentManager();
-        // create a FragmentTransaction to begin the transaction and replace the Fragment
         FragmentTransaction fragmentTransaction = fm.beginTransaction();
-        // replace the FrameLayout with new Fragment
         fragmentTransaction.replace(frameLayoutId, vpFragment);
-        fragmentTransaction.commit(); // save the changes
+        commitTransaction(fm, fragmentTransaction);
     }
 
     public void removeFragment(/*VideoPlayerFragmentFullscreenExoPlayer*/Fragment vpFragment) {
         FragmentManager fm = bridge.getActivity().getSupportFragmentManager();
         FragmentTransaction fragmentTransaction = fm.beginTransaction();
         fragmentTransaction.remove(vpFragment);
-        fragmentTransaction.commit();
+        commitTransaction(fm, fragmentTransaction);
     }
 }

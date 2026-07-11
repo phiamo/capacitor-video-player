@@ -115,19 +115,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
   public String language;
   public JSObject subTitleOptions;
   public JSObject headers;
-  public Boolean isTV;
-  public Boolean isInternal;
+  public Boolean isTV = false;
+  public Boolean isInternal = false;
   public Long videoId;
-  public Boolean exitOnEnd;
-  public Boolean loopOnEnd;
-  public Boolean pipEnabled;
-  public Boolean bkModeEnabled;
-  public Boolean showControls;
+  public Boolean exitOnEnd = true;
+  public Boolean loopOnEnd = false;
+  public Boolean pipEnabled = true;
+  public Boolean bkModeEnabled = true;
+  public Boolean showControls = true;
   public String displayMode = "all";
   public String title;
   public String smallTitle;
   public String accentColor;
-  public Boolean chromecast;
+  public Boolean chromecast = true;
   public String artwork;
   public List<SubtitleTrack> subtitleTracks;
   public String selectedSubtitleId;
@@ -233,7 +233,17 @@ public class FullscreenExoPlayerFragment extends Fragment {
       Log.w(TAG, "Fragment is detached, cannot create view");
       return null;
     }
-    
+
+    // Orphaned fragment after process death — fields were never re-populated by the plugin
+    if (playerId == null) {
+      Log.w(TAG, "Orphaned fragment after process death — no playerId");
+      Activity act = getActivity();
+      if (act != null) {
+        act.finishAndRemoveTask();
+      }
+      return null;
+    }
+
     packageManager = context.getPackageManager();
     view = inflater.inflate(R.layout.fragment_fs_exoplayer, container, false);
     constLayout = view.findViewById(R.id.fsExoPlayer);
@@ -751,10 +761,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
     if (Util.SDK_INT >= 24) {
       if (styledPlayerView != null) {
         // If cast is playing then it doesn't start the local player once get backs from background
-        if (castContext != null && chromecast && castPlayer.isCastSessionAvailable()) return;
+        if (castContext != null && Boolean.TRUE.equals(chromecast) && castPlayer != null && castPlayer.isCastSessionAvailable()) return;
 
         initializePlayer();
-        if (player.getCurrentPosition() != 0) {
+        if (player != null && player.getCurrentPosition() != 0) {
           firstReadyToPlay = false;
           play();
         }
@@ -1293,6 +1303,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Fast Forward TV
    */
   private void fastForward(long position, int times) {
+    if (player == null) {
+      return;
+    }
     if (position < mDuration - videoStep) {
       if (player.isPlaying()) {
         player.setPlayWhenReady(false);
@@ -1306,6 +1319,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Rewind TV
    */
   private void rewind(long position, int times) {
+    if (player == null) {
+      return;
+    }
     if (position > videoStep) {
       if (player.isPlaying()) {
         player.setPlayWhenReady(false);
@@ -1319,6 +1335,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Play Pause TV
    */
   private void play_pause() {
+    if (player == null) {
+      return;
+    }
     player.setPlayWhenReady(!player.isPlaying());
   }
 
@@ -1327,13 +1346,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @return boolean
    */
   public boolean isPlaying() {
-    return player.isPlaying();
+    return player != null && player.isPlaying();
   }
 
   /**
    * Start the player
    */
   public void play() {
+    if (player == null) {
+      return;
+    }
     PlaybackParameters param = new PlaybackParameters(videoRate);
     player.setPlaybackParameters(param);
 
@@ -1413,6 +1435,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @return int in seconds
    */
   public int getDuration() {
+    if (player == null) {
+      return 0;
+    }
     return player.getDuration() == UNKNOWN_TIME ? 0 : (int) (player.getDuration() / 1000);
   }
 
@@ -1421,6 +1446,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @return int in seconds
    */
   public int getCurrentTime() {
+    if (player == null) {
+      return 0;
+    }
     return player.getCurrentPosition() == UNKNOWN_TIME ? 0 : (int) (player.getCurrentPosition() / 1000);
   }
 
@@ -1503,6 +1531,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @param timeSecond int
    */
   public void setCurrentTime(int timeSecond) {
+    if (player == null) {
+      return;
+    }
     if (isInPictureInPictureMode) {
       styledPlayerView.setUseController(false);
       linearLayout.setVisibility(View.INVISIBLE);
@@ -1518,6 +1549,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @return float
    */
   public float getVolume() {
+    if (player == null) {
+      return curVolume;
+    }
     return player.getVolume();
   }
 
@@ -1526,6 +1560,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @param _volume float range 0,1
    */
   public void setVolume(float _volume) {
+    if (player == null) {
+      return;
+    }
     float volume = Math.min(Math.max(0, _volume), 1L);
     player.setVolume(volume);
   }
@@ -1544,6 +1581,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    */
   public void setRate(float _rate) {
     videoRate = _rate;
+    if (player == null) {
+      return;
+    }
     PlaybackParameters param = new PlaybackParameters(videoRate);
     player.setPlaybackParameters(param);
   }
@@ -1554,6 +1594,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
    */
   public void setMuted(boolean _isMuted) {
     isMuted = _isMuted;
+    if (player == null) {
+      return;
+    }
     if (isMuted) {
       curVolume = player.getVolume();
       player.setVolume(0L);
