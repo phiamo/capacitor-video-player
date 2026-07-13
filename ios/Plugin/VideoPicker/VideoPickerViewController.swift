@@ -7,7 +7,7 @@
 //
 
 import AVKit
-import MobileCoreServices
+import UniformTypeIdentifiers
 import UIKit
 
 open class VideoPickerViewController: UIViewController {
@@ -111,7 +111,7 @@ extension VideoPickerViewController: UIImagePickerControllerDelegate {
     ) {
         guard
             let mediaType = info[UIImagePickerController.InfoKey.mediaType] as? String,
-            mediaType == (kUTTypeMovie as String),
+            mediaType == UTType.movie.identifier,
             let url = info[UIImagePickerController.InfoKey.mediaURL] as? URL
         else {
             return

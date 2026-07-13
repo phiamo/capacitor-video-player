@@ -38,7 +38,7 @@
 //  THE SOFTWARE.
 
 import AVFoundation
-import MobileCoreServices
+import UniformTypeIdentifiers
 import UIKit
 
 enum VideoHelper {
@@ -75,45 +75,52 @@ enum VideoHelper {
 
         let mediaUI = UIImagePickerController()
         mediaUI.sourceType = sourceType
-        mediaUI.mediaTypes = [kUTTypeMovie as String]
+        mediaUI.mediaTypes = [UTType.movie.identifier]
         mediaUI.allowsEditing = false
         mediaUI.delegate = delegate
         delegate.present(mediaUI, animated: true, completion: nil)
     }
 
+    @MainActor
     static func videoCompositionInstruction(
         _ track: AVCompositionTrack,
         asset: AVAsset
-    ) -> AVMutableVideoCompositionLayerInstruction {
+    ) async throws -> AVMutableVideoCompositionLayerInstruction {
         let instruction = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        let assetTrack = asset.tracks(withMediaType: AVMediaType.video)[0]
+        let videoTracks = try await asset.loadVideoTracks()
+        guard let assetTrack = videoTracks.first else {
+            return instruction
+        }
 
-        let transform = assetTrack.preferredTransform
+        let display = try await assetTrack.loadDisplayProperties()
+        let transform = display.transform
+        let naturalSize = display.naturalSize
         let assetInfo = orientationFromTransform(transform)
+        let screenWidth = UIScreen.main.bounds.width
+        let screenBounds = UIScreen.main.bounds
 
-        var scaleToFitRatio = UIScreen.main.bounds.width / assetTrack.naturalSize.width
+        var scaleToFitRatio = screenWidth / naturalSize.width
         if assetInfo.isPortrait {
-            scaleToFitRatio = UIScreen.main.bounds.width / assetTrack.naturalSize.height
+            scaleToFitRatio = screenWidth / naturalSize.height
             let scaleFactor = CGAffineTransform(
                 scaleX: scaleToFitRatio,
                 y: scaleToFitRatio)
             instruction.setTransform(
-                assetTrack.preferredTransform.concatenating(scaleFactor),
+                transform.concatenating(scaleFactor),
                 at: .zero)
         } else {
             let scaleFactor = CGAffineTransform(
                 scaleX: scaleToFitRatio,
                 y: scaleToFitRatio)
-            var concat = assetTrack.preferredTransform.concatenating(scaleFactor)
+            var concat = transform.concatenating(scaleFactor)
                 .concatenating(CGAffineTransform(
                                 translationX: 0,
-                                y: UIScreen.main.bounds.width / 2))
+                                y: screenWidth / 2))
             if assetInfo.orientation == .down {
                 let fixUpsideDown = CGAffineTransform(rotationAngle: CGFloat(Double.pi))
-                let windowBounds = UIScreen.main.bounds
-                let yFix = assetTrack.naturalSize.height + windowBounds.height
+                let yFix = naturalSize.height + screenBounds.height
                 let centerFix = CGAffineTransform(
-                    translationX: assetTrack.naturalSize.width,
+                    translationX: naturalSize.width,
                     y: yFix)
                 concat = fixUpsideDown.concatenating(centerFix).concatenating(scaleFactor)
             }
@@ -123,5 +130,3 @@ enum VideoHelper {
         return instruction
     }
 }
-
-import Foundation

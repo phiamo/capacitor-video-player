@@ -9,10 +9,5 @@
 import AVKit
 
 extension AVURLAsset {
-
-    var videoSize: CGSize? {
-        tracks(withMediaType: .video).first.flatMap {
-            tracks.count > 0 ? $0.naturalSize.applying($0.preferredTransform) : nil
-        }
-    }
+    // Use loadVideoSize() from AVAssetModernLoading.swift for async access.
 }

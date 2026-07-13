@@ -234,100 +234,97 @@ open class FullScreenVideoPlayerView: UIView {
     // swiftlint:disable function_body_length
     // swiftlint:disable cyclomatic_complexity
   private func initialize() {
-      // Handle multiple subtitle tracks or single subtitle
+      Task { @MainActor in
+          await self.initializeAsync()
+      }
+  }
+
+  @MainActor
+  private func initializeAsync() async {
       if let tracks = self._subtitleTracks, !tracks.isEmpty {
-          // New API: multiple subtitle tracks
           let isHLS = FullScreenVideoPlayerView.isHLSStream(url: self._url)
-          
+
           if isHLS {
               self.loadAllSubtitleTracksForHLS()
           } else {
-              // Non-HLS: Load tracks first, then create composition
-              self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) { [weak self] in
-                  guard let self = self else { return }
-                  DispatchQueue.main.async {
-                      let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
-                      guard !videoTracks.isEmpty else {
-                          self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                          self.player = AVPlayer(playerItem: self.playerItem)
-                          self.setupPlayer()
-                          return
-                      }
-                      self.createPlayerWithSubtitles(
-                          videoTracks: videoTracks,
-                          subtitleTracks: tracks
-                      )
+              do {
+                  let videoTracks = try await self.videoAsset.loadVideoTracks()
+                  guard !videoTracks.isEmpty else {
+                      self.playerItem = AVPlayerItem(asset: self.videoAsset)
+                      self.player = AVPlayer(playerItem: self.playerItem)
+                      self.setupPlayer()
+                      return
                   }
+                  await self.createPlayerWithSubtitles(
+                      videoTracks: videoTracks,
+                      subtitleTracks: tracks
+                  )
+              } catch {
+                  Self.logger.error("Failed to load video tracks for subtitles: \(error)")
+                  self.playerItem = AVPlayerItem(asset: self.videoAsset)
+                  self.player = AVPlayer(playerItem: self.playerItem)
+                  self.setupPlayer()
               }
           }
       } else if let subTitleUrl = self._stUrl {
-          // Backward compatibility: single subtitle
-          // For HLS streams, we need to load the asset asynchronously
           Self.logger.debug("Loading HLS stream: \(self._url)")
-          
-          // Load the asset asynchronously first
-          self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) {
-              DispatchQueue.main.async {
-                  Self.logger.debug("HLS stream loaded. Tracks count: \(self.videoAsset.tracks.count)")
-                  
-                  // For HLS streams, tracks might not be immediately available
-                  // Check if this is an HLS stream by URL extension or content type
-                  let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
-                  
-                  if isHLSStream {
-                      Self.logger.debug("HLS stream detected - proceeding with player setup")
-                      Self.logger.debug("HLS stream URL: \(self._url.absoluteString)")
-                      Self.logger.debug("HLS stream tracks available: \(self.videoAsset.tracks.count)")
-                      // For HLS streams, proceed with player setup even if tracks aren't immediately available
-                      // The tracks will be loaded when the player item becomes ready
-                      self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
-                  } else {
-                      // For non-HLS streams, check for video tracks
-                      let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
-                      guard !videoTracks.isEmpty else {
-                              Self.logger.debug("No video tracks found in non-HLS stream - using simple player")
-                          self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                          self.player = AVPlayer(playerItem: self.playerItem)
-                          self.setupPlayer()
-                          return
-                      }
-                      
-                      // Continue with subtitle logic only after HLS is loaded
-                      self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
+
+          do {
+              let allTracks = try await self.videoAsset.loadAllTracks()
+              Self.logger.debug("HLS stream loaded. Tracks count: \(allTracks.count)")
+
+              let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
+
+              if isHLSStream {
+                  Self.logger.debug("HLS stream detected - proceeding with player setup")
+                  Self.logger.debug("HLS stream URL: \(self._url.absoluteString)")
+                  Self.logger.debug("HLS stream tracks available: \(allTracks.count)")
+                  await self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
+              } else {
+                  let videoTracks = try await self.videoAsset.loadVideoTracks()
+                  guard !videoTracks.isEmpty else {
+                      Self.logger.debug("No video tracks found in non-HLS stream - using simple player")
+                      self.playerItem = AVPlayerItem(asset: self.videoAsset)
+                      self.player = AVPlayer(playerItem: self.playerItem)
+                      self.setupPlayer()
+                      return
                   }
+
+                  await self.loadVideoAssetWithSubtitles(subTitleUrl: subTitleUrl)
               }
+          } catch {
+              Self.logger.error("Failed to load video asset: \(error)")
+              self.playerItem = AVPlayerItem(asset: self.videoAsset)
+              self.player = AVPlayer(playerItem: self.playerItem)
+              self.setupPlayer()
           }
       } else {
-          // No subtitles, use simple player
           self.playerItem = AVPlayerItem(asset: self.videoAsset)
           self.player = AVPlayer(playerItem: self.playerItem)
           self.setupPlayer()
       }
   }
-    
-    private func loadVideoAssetWithSubtitles(subTitleUrl: URL) {
+
+    @MainActor
+    private func loadVideoAssetWithSubtitles(subTitleUrl: URL) async {
         Self.logger.debug("Loading video asset with subtitles...")
-        
-        // Check if this is an HLS stream
+
         let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
-        
+
         if isHLSStream {
             Self.logger.debug("HLS stream detected - setting up player with subtitles")
             Self.logger.debug("HLS URL: \(self._url.absoluteString)")
-            // For HLS streams, set up subtitles first, then create player
             self.setupSubtitlesForHLS(subTitleUrl: subTitleUrl)
         } else {
-            // For non-HLS streams, load tracks asynchronously
-        self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks", "duration"]) { [weak self] in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                
-                Self.logger.debug("Video asset loaded. Tracks count: \(self.videoAsset.tracks.count)")
-                Self.logger.debug("Video asset duration: \(self.videoAsset.duration.seconds, privacy: .public) seconds")
-                
-                let videoTracks = self.videoAsset.tracks(withMediaType: AVMediaType.video)
+            do {
+                let allTracks = try await self.videoAsset.loadAllTracks()
+                let duration = try await self.videoAsset.loadDurationValue()
+                Self.logger.debug("Video asset loaded. Tracks count: \(allTracks.count)")
+                Self.logger.debug("Video asset duration: \(duration.seconds, privacy: .public) seconds")
+
+                let videoTracks = try await self.videoAsset.loadVideoTracks()
                 Self.logger.debug("Video tracks count: \(videoTracks.count)")
-                
+
                 if videoTracks.isEmpty {
                     Self.logger.debug("No video tracks found after loading - falling back to simple player")
                     self.playerItem = AVPlayerItem(asset: self.videoAsset)
@@ -335,10 +332,13 @@ open class FullScreenVideoPlayerView: UIView {
                     self.setupPlayer()
                     return
                 }
-                
-                // Now proceed with subtitle composition
-                self.createPlayerWithSubtitles(subTitleUrl: subTitleUrl, videoTracks: videoTracks)
-                }
+
+                await self.createPlayerWithSubtitles(subTitleUrl: subTitleUrl, videoTracks: videoTracks)
+            } catch {
+                Self.logger.error("Failed to load video asset with subtitles: \(error)")
+                self.playerItem = AVPlayerItem(asset: self.videoAsset)
+                self.player = AVPlayer(playerItem: self.playerItem)
+                self.setupPlayer()
             }
         }
     }
@@ -613,65 +613,56 @@ open class FullScreenVideoPlayerView: UIView {
         return nil
     }
     
-    private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) {
+    @MainActor
+    private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) async {
         Self.logger.debug("Creating player with subtitles...")
-        
+
         var textStyle: [AVTextStyleRule] = []
         if let opt = self._stOptions {
             textStyle.append(contentsOf: self.setSubTitleStyle(options: opt))
         }
 
-        let subTitleAsset = AVAsset(url: subTitleUrl)
-        Self.logger.debug("Subtitle asset duration: \(subTitleAsset.duration.seconds, privacy: .public) seconds")
+        let subTitleAsset = AVURLAsset(url: subTitleUrl)
         let composition = AVMutableComposition()
 
-        if let videoTrack = composition.addMutableTrack(
-            withMediaType: AVMediaType.video,
-            preferredTrackID: Int32(kCMPersistentTrackID_Invalid)) {
-            
-            // Check if video has audio tracks
-            let audioTracks = self.videoAsset.tracks(withMediaType: AVMediaType.audio)
-            let audioTrack = composition.addMutableTrack(
-                withMediaType: AVMediaType.audio,
-                preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
-            
-            do {
+        do {
+            let duration = try await self.videoAsset.loadDurationValue()
+            Self.logger.debug("Subtitle asset duration: \(duration.seconds, privacy: .public) seconds")
+
+            if let videoTrack = composition.addMutableTrack(
+                withMediaType: AVMediaType.video,
+                preferredTrackID: Int32(kCMPersistentTrackID_Invalid)) {
+
+                let audioTracks = try await self.videoAsset.loadAudioTracks()
+                let audioTrack = composition.addMutableTrack(
+                    withMediaType: AVMediaType.audio,
+                    preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
+
                 try videoTrack.insertTimeRange(
-                    CMTimeRangeMake(start: CMTime.zero,
-                                    duration: self.videoAsset.duration),
+                    CMTimeRangeMake(start: CMTime.zero, duration: duration),
                     of: videoTracks[0],
                     at: CMTime.zero)
-                
-                // Add audio track if it exists
+
                 if !audioTracks.isEmpty, let audioTrack = audioTrack {
-                    try audioTrack.insertTimeRange(CMTimeRangeMake(
-                                                    start: CMTime.zero,
-                                                    duration: self.videoAsset.duration),
-                                                   of: audioTracks[0], at: CMTime.zero)
+                    try audioTrack.insertTimeRange(
+                        CMTimeRangeMake(start: CMTime.zero, duration: duration),
+                        of: audioTracks[0],
+                        at: CMTime.zero)
                 }
-                
-                // Check if subtitle asset has text tracks
-                let subtitleTracks = subTitleAsset.tracks(withMediaType: .text)
+
+                let subtitleTracks = try await subTitleAsset.loadTextTracks()
                 if !subtitleTracks.isEmpty {
                     if let subtitleTrack = composition.addMutableTrack(
                         withMediaType: .text,
                         preferredTrackID: kCMPersistentTrackID_Invalid) {
-                        do {
-                            let duration = self.videoAsset.duration
-                            try subtitleTrack.insertTimeRange(
-                                CMTimeRangeMake(start: CMTime.zero,
-                                                duration: duration),
-                                of: subtitleTracks[0],
-                                at: CMTime.zero)
+                        try subtitleTrack.insertTimeRange(
+                            CMTimeRangeMake(start: CMTime.zero, duration: duration),
+                            of: subtitleTracks[0],
+                            at: CMTime.zero)
 
-                            self.playerItem = AVPlayerItem(asset: composition)
-                            self.playerItem?.textStyleRules = textStyle
-                            Self.logger.debug("Successfully added subtitle track")
-
-                        } catch {
-                            Self.logger.debug("Failed to insert subtitle track: \(error)")
-                            self.playerItem = AVPlayerItem(asset: self.videoAsset)
-                        }
+                        self.playerItem = AVPlayerItem(asset: composition)
+                        self.playerItem?.textStyleRules = textStyle
+                        Self.logger.debug("Successfully added subtitle track")
                     } else {
                         Self.logger.debug("Failed to create subtitle track")
                         self.playerItem = AVPlayerItem(asset: self.videoAsset)
@@ -680,15 +671,15 @@ open class FullScreenVideoPlayerView: UIView {
                     Self.logger.debug("No subtitle tracks found in subtitle asset")
                     self.playerItem = AVPlayerItem(asset: self.videoAsset)
                 }
-            } catch {
-                Self.logger.debug("Failed to insert video/audio tracks: \(error)")
+            } else {
+                Self.logger.debug("Failed to create video track")
                 self.playerItem = AVPlayerItem(asset: self.videoAsset)
             }
-        } else {
-            Self.logger.debug("Failed to create video track")
+        } catch {
+            Self.logger.debug("Failed to create player with subtitles: \(error)")
             self.playerItem = AVPlayerItem(asset: self.videoAsset)
         }
-        
+
         self.player = AVPlayer(playerItem: self.playerItem)
         self.setupPlayer()
     }
@@ -839,46 +830,43 @@ open class FullScreenVideoPlayerView: UIView {
     
     /// Creates composition using a specific asset (either original or player item's asset)
     private func createCompositionWithAsset(asset: AVAsset, subtitleTracks: [[String: Any]]) {
+        Task { @MainActor in
+            await self.createCompositionWithAssetAsync(asset: asset, subtitleTracks: subtitleTracks)
+        }
+    }
+
+    @MainActor
+    private func createCompositionWithAssetAsync(asset: AVAsset, subtitleTracks: [[String: Any]]) async {
         Self.logger.debug("🔨 Creating composition with asset tracks + subtitle tracks...")
-        
-        // Get video tracks from the provided asset
-        let videoTracks = asset.tracks(withMediaType: .video)
-        
+
+        let videoTracks = (try? await asset.loadVideoTracks()) ?? []
+
         guard !videoTracks.isEmpty else {
             Self.logger.error("No video tracks in provided asset")
             return
         }
-        
-        // Create composition with video/audio + subtitle tracks
-        // Convert AVAsset to AVURLAsset if needed (for HLS, player item's asset might not be AVURLAsset)
-        // If it's not an AVURLAsset, we need to use the original videoAsset
+
         let assetToUse: AVAsset
         if let urlAsset = asset as? AVURLAsset {
             assetToUse = urlAsset
         } else {
-            // Fall back to original videoAsset if player item's asset isn't AVURLAsset
             Self.logger.warning(" Player item's asset is not AVURLAsset, using original videoAsset")
             assetToUse = self.videoAsset
         }
-        
-        if let composition = self.createCompositionWithMultipleSubtitlesForHLS(
+
+        if let composition = await self.createCompositionWithMultipleSubtitlesForHLS(
             videoAsset: assetToUse as! AVURLAsset,
             subtitleTracks: subtitleTracks
         ) {
             Self.logger.notice(" Composition created successfully with subtitles")
-            
-            // Create new player item with composition
+
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
-            
-            // Replace current player item
+
             if let currentPlayer = self.player {
                 currentPlayer.replaceCurrentItem(with: newPlayerItem)
                 self.playerItem = newPlayerItem
-                
-                // Set initial track selection after player item is ready
                 self.setInitialSubtitleSelection()
-                
                 Self.logger.notice(" Player item replaced with composition containing subtitle tracks")
                 Self.logger.debug("   Subtitles should now appear in native iOS subtitle selection menu")
             }
@@ -913,42 +901,41 @@ open class FullScreenVideoPlayerView: UIView {
         }
         
         let delay = Double(retryCount + 1) * 0.5 // 0.5s, 1s, 1.5s, etc.
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
             guard let self = self else { return }
-            
-            // Check both player item asset and original asset
+
             guard let playerItem = self.playerItem else {
                 self.retryCreateCompositionWithSubtitles(subtitleTracks: subtitleTracks, retryCount: retryCount + 1)
                 return
             }
-            
+
             let playerItemAsset = playerItem.asset
-            
-            // Try loading tracks from both assets
-            playerItemAsset.loadValuesAsynchronously(forKeys: ["tracks"]) {
-                self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks"]) {
-                    DispatchQueue.main.async {
-                        let playerItemVideoTracks = playerItemAsset.tracks(withMediaType: .video)
-                        let originalVideoTracks = self.videoAsset.tracks(withMediaType: .video)
-                        
-                        Self.logger.debug("   Retry \(retryCount + 1)/\(maxRetries):")
-                        Self.logger.debug("      Player item asset tracks: \(playerItemVideoTracks.count)")
-                        Self.logger.debug("      Original asset tracks: \(originalVideoTracks.count)")
-                        
-                        let tracksToUse = !playerItemVideoTracks.isEmpty ? playerItemVideoTracks : originalVideoTracks
-                        let assetToUse = !playerItemVideoTracks.isEmpty ? playerItemAsset : self.videoAsset
-                        
-                        if !tracksToUse.isEmpty {
-                            Self.logger.notice(" Tracks now available! Creating composition with all subtitle tracks...")
-                            self.subtitleRetryInProgress = false // Reset flag
-                            self.createCompositionWithAsset(asset: assetToUse, subtitleTracks: subtitleTracks)
-                        } else {
-                            // Try again
-                            self.retryCreateCompositionWithSubtitles(subtitleTracks: subtitleTracks, retryCount: retryCount + 1)
-                        }
-                    }
+
+            do {
+                try await playerItemAsset.loadTracksOnly()
+                try await self.videoAsset.loadTracksOnly()
+
+                let playerItemVideoTracks = try await playerItemAsset.loadVideoTracks()
+                let originalVideoTracks = try await self.videoAsset.loadVideoTracks()
+
+                Self.logger.debug("   Retry \(retryCount + 1)/\(maxRetries):")
+                Self.logger.debug("      Player item asset tracks: \(playerItemVideoTracks.count)")
+                Self.logger.debug("      Original asset tracks: \(originalVideoTracks.count)")
+
+                let tracksToUse = !playerItemVideoTracks.isEmpty ? playerItemVideoTracks : originalVideoTracks
+                let assetToUse = !playerItemVideoTracks.isEmpty ? playerItemAsset : self.videoAsset
+
+                if !tracksToUse.isEmpty {
+                    Self.logger.notice(" Tracks now available! Creating composition with all subtitle tracks...")
+                    self.subtitleRetryInProgress = false
+                    await self.createCompositionWithAssetAsync(asset: assetToUse, subtitleTracks: subtitleTracks)
+                } else {
+                    self.retryCreateCompositionWithSubtitles(subtitleTracks: subtitleTracks, retryCount: retryCount + 1)
                 }
+            } catch {
+                self.retryCreateCompositionWithSubtitles(subtitleTracks: subtitleTracks, retryCount: retryCount + 1)
             }
         }
     }
@@ -957,45 +944,45 @@ open class FullScreenVideoPlayerView: UIView {
     /// This is needed because HLS tracks might only be available through player item, not asset
     /// NOTE: This method doesn't work - can't copy HLS tracks from player item
     private func createCompositionFromPlayerItemTracks(subtitleTracks: [[String: Any]]) {
+        Task { @MainActor in
+            await self.createCompositionFromPlayerItemTracksAsync(subtitleTracks: subtitleTracks)
+        }
+    }
+
+    @MainActor
+    private func createCompositionFromPlayerItemTracksAsync(subtitleTracks: [[String: Any]]) async {
         Self.logger.debug("🔨 Creating composition from player item tracks (HLS)...")
-        
+
         guard let playerItem = self.playerItem else {
             Self.logger.error(" Player item is nil")
             return
         }
-        
-        // Get video and audio tracks from player item
+
         let playerItemVideoTracks = playerItem.tracks.compactMap { $0.assetTrack }.filter { $0.mediaType == .video }
         let playerItemAudioTracks = playerItem.tracks.compactMap { $0.assetTrack }.filter { $0.mediaType == .audio }
-        
+
         Self.logger.debug("   Player item video tracks: \(playerItemVideoTracks.count)")
         Self.logger.debug("   Player item audio tracks: \(playerItemAudioTracks.count)")
-        
+
         guard !playerItemVideoTracks.isEmpty else {
             Self.logger.error(" No video tracks in player item")
             return
         }
-        
-        // Create composition with video/audio from player item + subtitle tracks
-        if let composition = self.createCompositionWithPlayerItemTracks(
+
+        if let composition = await self.createCompositionWithPlayerItemTracks(
             videoTracks: playerItemVideoTracks,
             audioTracks: playerItemAudioTracks,
             subtitleTracks: subtitleTracks
         ) {
             Self.logger.notice(" Composition created successfully with all tracks")
-            
-            // Create new player item with composition
+
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
-            
-            // Replace current player item
+
             if let currentPlayer = self.player {
                 currentPlayer.replaceCurrentItem(with: newPlayerItem)
                 self.playerItem = newPlayerItem
-                
-                // Set initial track selection after player item is ready
                 self.setInitialSubtitleSelection()
-                
                 Self.logger.notice(" Player item replaced with composition containing \(subtitleTracks.count) subtitle tracks")
                 Self.logger.debug("   Subtitles should now appear in native iOS subtitle selection menu")
             }
@@ -1004,49 +991,46 @@ open class FullScreenVideoPlayerView: UIView {
         }
     }
     
-    /// Creates a composition with video/audio tracks + external subtitle tracks
-    /// and replaces the current player item. This makes subtitles appear in native iOS menu.
     private func createAndReplacePlayerItemWithSubtitles(subtitleTracks: [[String: Any]]) {
+        Task { @MainActor in
+            await self.createAndReplacePlayerItemWithSubtitlesAsync(subtitleTracks: subtitleTracks)
+        }
+    }
+
+    @MainActor
+    private func createAndReplacePlayerItemWithSubtitlesAsync(subtitleTracks: [[String: Any]]) async {
         Self.logger.debug("🔨 Creating composition with video/audio + subtitle tracks for native menu...")
-        
-        // Get available tracks from the asset
-        let videoTracks = self.videoAsset.tracks(withMediaType: .video)
-        
+
+        let videoTracks = (try? await self.videoAsset.loadVideoTracks()) ?? []
+
         guard !videoTracks.isEmpty else {
             Self.logger.error(" No video tracks available, cannot create composition")
             return
         }
-        
-        // Create composition with video/audio + subtitle tracks
-        if let composition = self.createCompositionWithMultipleSubtitlesForHLS(
+
+        if let composition = await self.createCompositionWithMultipleSubtitlesForHLS(
             videoAsset: self.videoAsset,
             subtitleTracks: subtitleTracks
         ) {
             Self.logger.notice(" Composition created successfully with subtitles")
-            
-            // Create new player item with composition
+
             Self.logger.debug("🔄 Creating new player item with composition...")
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
-            Self.logger.debug("   ✅ Player item created, composition has \(composition.tracks.count) tracks")
+            let compositionTracks = (try? await composition.loadAllTracks()) ?? []
+            Self.logger.debug("   ✅ Player item created, composition has \(compositionTracks.count) tracks")
             Self.logger.debug("   📊 Composition tracks breakdown:")
-            let videoTracks = composition.tracks(withMediaType: .video)
-            let audioTracks = composition.tracks(withMediaType: .audio)
-            let subtitleTracks = composition.tracks(withMediaType: .subtitle)
-            Self.logger.debug("      Video: \(videoTracks.count), Audio: \(audioTracks.count), Subtitle: \(subtitleTracks.count)")
-            
-            // Replace current player item
+            let compVideoTracks = (try? await composition.loadVideoTracks()) ?? []
+            let compAudioTracks = (try? await composition.loadAudioTracks()) ?? []
+            let compSubtitleTracks = try? await composition.loadTracks(withMediaType: .subtitle)
+            Self.logger.debug("      Video: \(compVideoTracks.count), Audio: \(compAudioTracks.count), Subtitle: \(compSubtitleTracks?.count ?? 0)")
+
             if let currentPlayer = self.player {
                 Self.logger.debug("🔄 Replacing current player item...")
                 currentPlayer.replaceCurrentItem(with: newPlayerItem)
                 self.playerItem = newPlayerItem
-                
-                // Add observer for media selection changes (when user clicks in native menu)
                 self.addMediaSelectionObserver()
-                
-                // Set initial track selection after player item is ready
                 self.setInitialSubtitleSelection()
-                
                 Self.logger.notice(" Player item replaced with composition containing subtitle tracks")
                 Self.logger.debug("   Subtitles should now appear in native iOS subtitle selection menu")
             }
@@ -1076,27 +1060,26 @@ open class FullScreenVideoPlayerView: UIView {
                 self.setupCustomSubtitleDisplayForHLS(subtitleTracks: subtitleTracks)
                 return
             }
-            
+
             retryCount += 1
-            let delay = Double(retryCount) * 0.5 // Increasing delay: 0.5s, 1s, 1.5s, etc.
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            let delay = Double(retryCount) * 0.5
+
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
                 guard let self = self else { return }
-                
-                // Reload asset tracks
-                self.videoAsset.loadValuesAsynchronously(forKeys: ["tracks"]) {
-                    DispatchQueue.main.async {
-                        let videoTracks = self.videoAsset.tracks(withMediaType: .video)
-                        Self.logger.debug("   Retry \(retryCount)/\(maxRetries): Video tracks: \(videoTracks.count)")
-                        
-                        if !videoTracks.isEmpty {
-                            Self.logger.notice(" Video tracks now available! Creating composition with all subtitle tracks...")
-                            self.createAndReplacePlayerItemWithSubtitles(subtitleTracks: subtitleTracks)
-                        } else {
-                            // Try again
-                            tryCreateComposition()
-                        }
+
+                do {
+                    let videoTracks = try await self.videoAsset.loadVideoTracks()
+                    Self.logger.debug("   Retry \(retryCount)/\(maxRetries): Video tracks: \(videoTracks.count)")
+
+                    if !videoTracks.isEmpty {
+                        Self.logger.notice(" Video tracks now available! Creating composition with all subtitle tracks...")
+                        await self.createAndReplacePlayerItemWithSubtitlesAsync(subtitleTracks: subtitleTracks)
+                    } else {
+                        tryCreateComposition()
                     }
+                } catch {
+                    tryCreateComposition()
                 }
             }
         }
@@ -1105,13 +1088,14 @@ open class FullScreenVideoPlayerView: UIView {
     }
     
     
+    @MainActor
     private func createPlayerWithSubtitles(
         videoTracks: [AVAssetTrack],
         subtitleTracks: [[String: Any]]
-    ) {
-        let audioTracks = self.videoAsset.tracks(withMediaType: .audio)
-        
-        if let composition = self.createCompositionWithMultipleSubtitles(
+    ) async {
+        let audioTracks = (try? await self.videoAsset.loadAudioTracks()) ?? []
+
+        if let composition = await self.createCompositionWithMultipleSubtitles(
             videoTracks: videoTracks,
             audioTracks: audioTracks,
             subtitleTracks: subtitleTracks
@@ -1120,11 +1104,8 @@ open class FullScreenVideoPlayerView: UIView {
             self.playerItem?.textStyleRules = self.getTextStyleRules()
             self.player = AVPlayer(playerItem: self.playerItem)
             self.setupPlayer()
-            
-            // Set initial track selection
             self.setInitialSubtitleSelection()
         } else {
-            // Fallback
             self.playerItem = AVPlayerItem(asset: self.videoAsset)
             self.player = AVPlayer(playerItem: self.playerItem)
             self.setupPlayer()
@@ -1134,30 +1115,20 @@ open class FullScreenVideoPlayerView: UIView {
     private func createCompositionWithMultipleSubtitlesForHLS(
         videoAsset: AVURLAsset,
         subtitleTracks: [[String: Any]]
-    ) -> AVMutableComposition? {
+    ) async -> AVMutableComposition? {
         Self.logger.debug("🔧 createCompositionWithMultipleSubtitlesForHLS called")
         Self.logger.debug("   Input: \(subtitleTracks.count) subtitle tracks")
         Self.logger.debug("   Video asset URL: \(videoAsset.url.absoluteString)")
-        
-        // For HLS, we need to use AVMutableCompositionTrack to reference the original asset
-        // We can't directly copy tracks from HLS because they load asynchronously
-        // Instead, we'll create a composition that references the original asset and adds subtitle tracks
-        
+
         let composition = AVMutableComposition()
-        
-        // Get available tracks from the asset (may be empty initially for HLS)
-        let videoTracks = videoAsset.tracks(withMediaType: .video)
-        let audioTracks = videoAsset.tracks(withMediaType: .audio)
-        
+
+        let videoTracks = (try? await videoAsset.loadVideoTracks()) ?? []
+        let audioTracks = (try? await videoAsset.loadAudioTracks()) ?? []
+        let assetDuration = try? await videoAsset.loadDurationValue()
+
         Self.logger.debug("   Available video tracks: \(videoTracks.count)")
         Self.logger.debug("   Available audio tracks: \(audioTracks.count)")
-        
-        // For HLS, we might not be able to get video tracks from the asset
-        // Instead, we'll create a composition that references the original asset
-        // and add subtitle tracks to it. The video will continue playing from the original asset.
-        // However, we still need at least one video track in the composition for it to be valid.
-        
-        // Try to add video track if available
+
         if !videoTracks.isEmpty {
             guard let compositionVideoTrack = composition.addMutableTrack(
                 withMediaType: .video,
@@ -1166,9 +1137,9 @@ open class FullScreenVideoPlayerView: UIView {
                 Self.logger.error(" Failed to create video track in composition")
                 return nil
             }
-            
+
             do {
-                let duration = videoAsset.duration
+                let duration = assetDuration ?? .invalid
                 if duration.isValid && !duration.isIndefinite {
                     try compositionVideoTrack.insertTimeRange(
                         CMTimeRangeMake(start: .zero, duration: duration),
@@ -1178,9 +1149,7 @@ open class FullScreenVideoPlayerView: UIView {
                     Self.logger.notice(" Video track added to composition")
                 } else {
                     Self.logger.warning(" Video asset duration is invalid, using estimated duration")
-                    // For HLS, duration might not be available yet
-                    // Use a large time range and let it adjust
-                    let estimatedDuration = CMTimeMake(value: 3600, timescale: 1) // 1 hour estimate
+                    let estimatedDuration = CMTimeMake(value: 3600, timescale: 1)
                     try compositionVideoTrack.insertTimeRange(
                         CMTimeRangeMake(start: .zero, duration: estimatedDuration),
                         of: videoTracks[0],
@@ -1190,8 +1159,6 @@ open class FullScreenVideoPlayerView: UIView {
                 }
             } catch {
                 Self.logger.error(" Failed to insert video track: \(error)")
-                // For HLS, if we can't copy tracks, we might need to use a different approach
-                // But let's continue and see if we can at least add subtitle tracks
                 Self.logger.debug("   Will try to add subtitle tracks anyway - composition may not play video")
             }
         } else {
@@ -1201,17 +1168,16 @@ open class FullScreenVideoPlayerView: UIView {
             Self.logger.debug("   Returning nil - will need to use fallback method")
             return nil
         }
-        
-        // Add audio track if exists
+
         if !audioTracks.isEmpty,
            let compositionAudioTrack = composition.addMutableTrack(
                withMediaType: .audio,
                preferredTrackID: kCMPersistentTrackID_Invalid
            ) {
             do {
-                let duration = videoAsset.duration
-                let durationToUse = duration.isValid && !duration.isIndefinite 
-                    ? duration 
+                let duration = assetDuration ?? .invalid
+                let durationToUse = duration.isValid && !duration.isIndefinite
+                    ? duration
                     : CMTimeMake(value: 3600, timescale: 1)
                 try compositionAudioTrack.insertTimeRange(
                     CMTimeRangeMake(start: .zero, duration: durationToUse),
@@ -1234,7 +1200,6 @@ open class FullScreenVideoPlayerView: UIView {
             let url = track["url"] as? String ?? "nil"
             Self.logger.debug("      [\(idx)] id=\(trackId), lang=\(language), url=\(url)")
         }
-        let dispatchGroup = DispatchGroup()
         var subtitleAssets: [(asset: AVURLAsset, trackId: String, language: String)] = []
         
         // First, resolve all URLs and create assets
@@ -1336,137 +1301,30 @@ open class FullScreenVideoPlayerView: UIView {
         }
         
         Self.logger.debug("📦 Starting async load for \(subtitleAssets.count) subtitle assets...")
-        
-        // Load all subtitle assets asynchronously
+
+        var loadableAssets: [(asset: AVURLAsset, trackId: String, language: String)] = []
         for subtitleInfo in subtitleAssets {
-            dispatchGroup.enter()
             Self.logger.debug("   ⏳ Loading subtitle asset for track: \(subtitleInfo.trackId) from \(subtitleInfo.asset.url.absoluteString)")
-            
-            // Check if URL is accessible before loading
             if subtitleInfo.asset.url.isFileURL {
                 let fileManager = FileManager.default
                 if !fileManager.fileExists(atPath: subtitleInfo.asset.url.path) {
                     Self.logger.debug("   ❌ Subtitle file does not exist at path: \(subtitleInfo.asset.url.path)")
-                    dispatchGroup.leave()
                     continue
-                } else {
-                    Self.logger.debug("   ✅ Subtitle file exists at path: \(subtitleInfo.asset.url.path)")
                 }
+                Self.logger.debug("   ✅ Subtitle file exists at path: \(subtitleInfo.asset.url.path)")
             } else {
                 Self.logger.debug("   🌐 Subtitle is remote URL, will download")
             }
-            
-            subtitleInfo.asset.loadValuesAsynchronously(forKeys: ["tracks", "duration", "availableMediaCharacteristicsWithMediaSelectionOptions"]) {
-                defer { dispatchGroup.leave() }
-                
-                var error: NSError?
-                let tracksStatus = subtitleInfo.asset.statusOfValue(forKey: "tracks", error: &error)
-                
-                if let loadError = error {
-                    Self.logger.debug("   ❌ Error loading subtitle asset for track \(subtitleInfo.trackId):")
-                    Self.logger.debug("      URL: \(subtitleInfo.asset.url.absoluteString)")
-                    Self.logger.debug("      Error domain: \(loadError.domain)")
-                    Self.logger.debug("      Error code: \(loadError.code)")
-                    Self.logger.debug("      Error description: \(loadError.localizedDescription)")
-                    
-                    // Check for HTTP errors (common auth issues)
-                    if let underlyingError = loadError.userInfo[NSUnderlyingErrorKey] as? NSError {
-                        Self.logger.debug("      Underlying error: \(underlyingError.localizedDescription)")
-                        Self.logger.debug("      Underlying error domain: \(underlyingError.domain)")
-                        Self.logger.debug("      Underlying error code: \(underlyingError.code)")
-                        
-                        // Check for HTTP status codes in underlying error
-                        if let httpStatusCode = underlyingError.userInfo["HTTPStatusCode"] as? Int {
-                            Self.logger.debug("      HTTP Status Code: \(httpStatusCode)")
-                            if httpStatusCode == 401 {
-                                Self.logger.debug("      ⚠️ AUTHENTICATION FAILED (401) - Check if headers/token are correct")
-                            } else if httpStatusCode == 403 {
-                                Self.logger.debug("      ⚠️ FORBIDDEN (403) - Check if headers/token have proper permissions")
-                            } else if httpStatusCode == 404 {
-                                Self.logger.debug("      ⚠️ NOT FOUND (404) - Subtitle file may not exist at this URL")
-                            }
-                        }
-                    }
-                    
-                    // Check for NSURLErrorDomain errors (network/auth issues)
-                    if loadError.domain == NSURLErrorDomain {
-                        switch loadError.code {
-                        case NSURLErrorUserAuthenticationRequired:
-                            Self.logger.debug("      ⚠️ AUTHENTICATION REQUIRED - Headers may be missing or invalid")
-                        case NSURLErrorUserCancelledAuthentication:
-                            Self.logger.debug("      ⚠️ AUTHENTICATION CANCELLED - Check credentials in headers")
-                        case NSURLErrorNotConnectedToInternet:
-                            Self.logger.debug("      ⚠️ NO INTERNET CONNECTION")
-                        case NSURLErrorTimedOut:
-                            Self.logger.debug("      ⚠️ REQUEST TIMED OUT")
-                        default:
-                            Self.logger.debug("      Network error code: \(loadError.code)")
-                        }
-                    }
-                    
-                    return
-                }
-                
-                guard tracksStatus == .loaded else {
-                    Self.logger.debug("   ❌ Failed to load subtitle asset for track \(subtitleInfo.trackId): status=\(tracksStatus.rawValue), error=\(error?.localizedDescription ?? "unknown error")")
-                    return
-                }
-                
-                Self.logger.debug("   ✅ Successfully loaded subtitle asset for track \(subtitleInfo.trackId)")
-                
-                // Verify asset is actually accessible
-                if subtitleInfo.asset.url.isFileURL {
-                    let fileManager = FileManager.default
-                    let fileSize = (try? fileManager.attributesOfItem(atPath: subtitleInfo.asset.url.path)[.size] as? Int64) ?? 0
-                    Self.logger.debug("      File size: \(fileSize) bytes")
-                    if fileSize == 0 {
-                        Self.logger.debug("      ⚠️ WARNING: Subtitle file is empty!")
-                    }
-                } else {
-                    // For remote URLs, check if we can get duration (indicates successful download)
-                    var durationError: NSError?
-                    let durationStatus = subtitleInfo.asset.statusOfValue(forKey: "duration", error: &durationError)
-                    if durationStatus == .loaded {
-                        Self.logger.debug("      Remote subtitle loaded successfully (duration: \(CMTimeGetSeconds(subtitleInfo.asset.duration))s)")
-                    } else {
-                        Self.logger.debug("      ⚠️ Could not verify remote subtitle download status")
-                    }
-                }
-                
-                // Check available tracks
-                let availableTracks = subtitleInfo.asset.tracks(withMediaType: .text)
-                Self.logger.debug("      Available text tracks: \(availableTracks.count)")
-                if availableTracks.isEmpty {
-                    Self.logger.debug("      ⚠️ WARNING: No text tracks found in subtitle asset!")
-                    Self.logger.debug("      This may indicate the file format is not supported or file is corrupted")
-                } else {
-                    for (idx, track) in availableTracks.enumerated() {
-                        Self.logger.debug("         Track \(idx): language=\(track.languageCode ?? "nil"), extendedLang=\(track.extendedLanguageTag ?? "nil")")
-                    }
-                }
-            }
+            loadableAssets.append(subtitleInfo)
         }
-        
-        // Wait for all assets to load (with timeout)
-        Self.logger.debug("⏳ Waiting for \(subtitleAssets.count) subtitle assets to load (timeout: 10s)...")
-        let timeoutResult = dispatchGroup.wait(timeout: .now() + 10.0)
-        if timeoutResult == .timedOut {
-            Self.logger.warning(" TIMEOUT: Some subtitle assets may not have finished loading")
-            Self.logger.debug("   This could indicate network issues or authentication problems")
-        } else {
-            Self.logger.notice(" All subtitle asset loading completed")
-        }
-        
-        // Now add all loaded subtitle tracks to composition
+
+        let loadedSubtitleAssets = await AVURLAsset.loadSubtitleAssets(loadableAssets)
+        Self.logger.notice(" Loaded \(loadedSubtitleAssets.count) subtitle assets")
+
         var addedTracksCount = 0
-        for subtitleInfo in subtitleAssets {
-            let subtitleAssetTracks = subtitleInfo.asset.tracks(withMediaType: .text)
-            guard !subtitleAssetTracks.isEmpty else {
-                Self.logger.warning(" No text tracks found in subtitle asset for track: \(subtitleInfo.trackId)")
-                continue
-            }
-            
-            // Use AVMediaType.subtitle for proper native menu support (instead of .text)
+        for subtitleInfo in loadedSubtitleAssets {
+            let subtitleAssetTracks = subtitleInfo.textTracks
+
             Self.logger.debug("   🔧 Creating composition subtitle track for: \(subtitleInfo.trackId) (\(subtitleInfo.language))")
             guard let compositionSubtitleTrack = composition.addMutableTrack(
                 withMediaType: .subtitle,
@@ -1476,34 +1334,28 @@ open class FullScreenVideoPlayerView: UIView {
                 continue
             }
             Self.logger.debug("   ✅ Created composition subtitle track successfully")
-            
+
             do {
-                // Use video asset duration, or estimated duration for HLS
-                let duration = videoAsset.duration
-                let durationToUse = duration.isValid && !duration.isIndefinite 
-                    ? duration 
-                    : CMTimeMake(value: 3600, timescale: 1) // 1 hour estimate for HLS
-                
+                let duration = assetDuration ?? .invalid
+                let durationToUse = duration.isValid && !duration.isIndefinite
+                    ? duration
+                    : CMTimeMake(value: 3600, timescale: 1)
+
                 try compositionSubtitleTrack.insertTimeRange(
                     CMTimeRangeMake(start: .zero, duration: durationToUse),
                     of: subtitleAssetTracks[0],
                     at: .zero
                 )
-                
-                // Note: languageCode and extendedLanguageTag are read-only on composition tracks
-                // The language should be preserved from the source track, but we can't set it directly
-                // AVFoundation will use the source track's language metadata
-                // If the source track doesn't have language, we need to ensure it's set in the source asset
-                
-                // Try to preserve language from source track if available
+
                 let sourceTrack = subtitleAssetTracks[0]
-                if sourceTrack.languageCode == nil || sourceTrack.extendedLanguageTag == nil {
+                let languageTags = try? await sourceTrack.loadLanguageTags()
+                if languageTags?.languageCode == nil || languageTags?.extendedTag == nil {
                     Self.logger.warning(" Source subtitle track has no language metadata for: \(subtitleInfo.trackId)")
                     Self.logger.debug("   This may cause issues with track identification in media selection")
                 } else {
-                    Self.logger.debug("   Source track language: \(sourceTrack.extendedLanguageTag ?? "nil")")
+                    Self.logger.debug("   Source track language: \(languageTags?.extendedTag ?? "nil")")
                 }
-                
+
                 addedTracksCount += 1
                 Self.logger.notice(" Successfully added subtitle track: \(subtitleInfo.trackId) (\(subtitleInfo.language))")
             } catch {
@@ -1536,15 +1388,14 @@ open class FullScreenVideoPlayerView: UIView {
         videoTracks: [AVAssetTrack],
         audioTracks: [AVAssetTrack],
         subtitleTracks: [[String: Any]]
-    ) -> AVMutableComposition? {
+    ) async -> AVMutableComposition? {
         Self.logger.debug("🔧 createCompositionWithPlayerItemTracks called")
         Self.logger.debug("   Video tracks: \(videoTracks.count)")
         Self.logger.debug("   Audio tracks: \(audioTracks.count)")
         Self.logger.debug("   Subtitle tracks: \(subtitleTracks.count)")
-        
+
         let composition = AVMutableComposition()
-        
-        // Add video track
+
         guard let compositionVideoTrack = composition.addMutableTrack(
             withMediaType: .video,
             preferredTrackID: kCMPersistentTrackID_Invalid
@@ -1552,9 +1403,9 @@ open class FullScreenVideoPlayerView: UIView {
             Self.logger.error(" Failed to create video track in composition")
             return nil
         }
-        
+
         do {
-            let duration = videoTracks[0].timeRange.duration
+            let duration = try await videoTracks[0].loadTimeRangeValue().duration
             try compositionVideoTrack.insertTimeRange(
                 CMTimeRangeMake(start: .zero, duration: duration),
                 of: videoTracks[0],
@@ -1565,15 +1416,14 @@ open class FullScreenVideoPlayerView: UIView {
             Self.logger.error(" Failed to insert video track: \(error)")
             return nil
         }
-        
-        // Add audio track if available
+
         if !audioTracks.isEmpty,
            let compositionAudioTrack = composition.addMutableTrack(
                withMediaType: .audio,
                preferredTrackID: kCMPersistentTrackID_Invalid
            ) {
             do {
-                let duration = audioTracks[0].timeRange.duration
+                let duration = try await audioTracks[0].loadTimeRangeValue().duration
                 try compositionAudioTrack.insertTimeRange(
                     CMTimeRangeMake(start: .zero, duration: duration),
                     of: audioTracks[0],
@@ -1584,32 +1434,26 @@ open class FullScreenVideoPlayerView: UIView {
                 Self.logger.warning(" Failed to insert audio track: \(error)")
             }
         }
-        
-        // Now add subtitle tracks using the existing method
-        // We'll reuse the subtitle loading logic from createCompositionWithMultipleSubtitlesForHLS
-        return self.addSubtitleTracksToComposition(composition: composition, subtitleTracks: subtitleTracks)
+
+        return await self.addSubtitleTracksToComposition(composition: composition, subtitleTracks: subtitleTracks)
     }
     
     /// Helper method to add subtitle tracks to an existing composition
     private func addSubtitleTracksToComposition(
         composition: AVMutableComposition,
         subtitleTracks: [[String: Any]]
-    ) -> AVMutableComposition? {
+    ) async -> AVMutableComposition? {
         Self.logger.debug("📝 Adding \(subtitleTracks.count) subtitle tracks to composition...")
-        
-        // This will reuse the subtitle loading logic from createCompositionWithMultipleSubtitlesForHLS
-        // We need to load subtitle assets and add them to the composition
+
         var subtitleAssets: [(asset: AVURLAsset, trackId: String, language: String)] = []
-        
-        // Resolve URLs and create assets (same logic as before)
+
         for (_, trackDict) in subtitleTracks.enumerated() {
             guard let trackUrlString = trackDict["url"] as? String,
                   let trackId = trackDict["id"] as? String,
                   let language = trackDict["language"] as? String else {
                 continue
             }
-            
-            // Resolve URL (same logic as createCompositionWithMultipleSubtitlesForHLS)
+
             var trackUrl: URL?
             if trackUrlString.hasPrefix("http://") || trackUrlString.hasPrefix("https://") {
                 trackUrl = URL(string: trackUrlString)
@@ -1618,10 +1462,9 @@ open class FullScreenVideoPlayerView: UIView {
             } else {
                 trackUrl = URL(fileURLWithPath: trackUrlString)
             }
-            
+
             guard let subtitleUrl = trackUrl else { continue }
-            
-            // Ensure VTT has language metadata
+
             let finalUrl: URL
             if subtitleUrl.pathExtension.lowercased() == "vtt" {
                 if let vttUrl = self.ensureVTTLanguageMetadata(vttURL: subtitleUrl, language: language) {
@@ -1632,8 +1475,7 @@ open class FullScreenVideoPlayerView: UIView {
             } else {
                 finalUrl = subtitleUrl
             }
-            
-            // Create asset with headers
+
             let headersToUse = self._stHeaders ?? self._videoHeaders
             let subtitleAsset: AVURLAsset
             if let headers = headersToUse {
@@ -1641,58 +1483,16 @@ open class FullScreenVideoPlayerView: UIView {
             } else {
                 subtitleAsset = AVURLAsset(url: finalUrl)
             }
-            
+
             subtitleAssets.append((asset: subtitleAsset, trackId: trackId, language: language))
         }
-        
-        // Load subtitle assets asynchronously and add to composition
+
         Self.logger.debug("📦 Starting async load for \(subtitleAssets.count) subtitle assets...")
-        let subtitleDispatchGroup = DispatchGroup()
-        var loadedSubtitleAssets: [(asset: AVURLAsset, trackId: String, language: String, textTracks: [AVAssetTrack])] = []
-        
-        for subtitleInfo in subtitleAssets {
-            subtitleDispatchGroup.enter()
-            Self.logger.debug("   ⏳ Loading subtitle asset for track: \(subtitleInfo.trackId)")
-            
-            subtitleInfo.asset.loadValuesAsynchronously(forKeys: ["tracks"]) {
-                defer { subtitleDispatchGroup.leave() }
-                
-                var error: NSError?
-                let tracksStatus = subtitleInfo.asset.statusOfValue(forKey: "tracks", error: &error)
-                
-                if let loadError = error {
-                    Self.logger.debug("   ❌ Error loading subtitle asset for track \(subtitleInfo.trackId): \(loadError.localizedDescription)")
-                    return
-                }
-                
-                guard tracksStatus == .loaded else {
-                    Self.logger.debug("   ❌ Failed to load subtitle asset for track \(subtitleInfo.trackId)")
-                    return
-                }
-                
-                let textTracks = subtitleInfo.asset.tracks(withMediaType: .text)
-                if !textTracks.isEmpty {
-                    loadedSubtitleAssets.append((asset: subtitleInfo.asset, trackId: subtitleInfo.trackId, language: subtitleInfo.language, textTracks: textTracks))
-                    Self.logger.debug("   ✅ Successfully loaded subtitle asset for track \(subtitleInfo.trackId)")
-                } else {
-                    Self.logger.debug("   ⚠️ No text tracks found in subtitle asset for track: \(subtitleInfo.trackId)")
-                }
-            }
-        }
-        
-        // Wait for all assets to load (with timeout)
-        Self.logger.debug("⏳ Waiting for \(subtitleAssets.count) subtitle assets to load (timeout: 10s)...")
-        let timeoutResult = subtitleDispatchGroup.wait(timeout: .now() + 10.0)
-        if timeoutResult == .timedOut {
-            Self.logger.warning(" TIMEOUT: Some subtitle assets may not have finished loading")
-        } else {
-            Self.logger.notice(" All subtitle asset loading completed")
-        }
-        
-        // Add loaded subtitle tracks to composition
+        let loadedSubtitleAssets = await AVURLAsset.loadSubtitleAssets(subtitleAssets)
+        Self.logger.notice(" Loaded \(loadedSubtitleAssets.count) subtitle assets")
+
         var addedTracksCount = 0
         for subtitleInfo in loadedSubtitleAssets {
-            // Use AVMediaType.subtitle for proper native menu support
             Self.logger.debug("   🔧 Creating composition subtitle track for: \(subtitleInfo.trackId) (\(subtitleInfo.language))")
             guard let compositionSubtitleTrack = composition.addMutableTrack(
                 withMediaType: .subtitle,
@@ -1702,28 +1502,32 @@ open class FullScreenVideoPlayerView: UIView {
                 continue
             }
             Self.logger.debug("   ✅ Created composition subtitle track successfully")
-            
+
             do {
-                // Use video track duration from composition
-                let videoTracks = composition.tracks(withMediaType: .video)
-                let duration = videoTracks.isEmpty ? CMTimeMake(value: 3600, timescale: 1) : videoTracks[0].timeRange.duration
+                let compVideoTracks = try await composition.loadVideoTracks()
+                let duration: CMTime
+                if compVideoTracks.isEmpty {
+                    duration = CMTimeMake(value: 3600, timescale: 1)
+                } else {
+                    duration = try await compVideoTracks[0].loadTimeRangeValue().duration
+                }
                 Self.logger.debug("   ⏱️ Using duration: \(CMTimeGetSeconds(duration))s for subtitle track")
-                
+
                 try compositionSubtitleTrack.insertTimeRange(
                     CMTimeRangeMake(start: .zero, duration: duration),
                     of: subtitleInfo.textTracks[0],
                     at: .zero
                 )
-                
+
                 addedTracksCount += 1
                 Self.logger.notice(" Successfully added subtitle track: \(subtitleInfo.trackId) (\(subtitleInfo.language))")
             } catch {
                 Self.logger.error(" Failed to insert subtitle track \(subtitleInfo.trackId): \(error)")
             }
         }
-        
+
         Self.logger.debug("📊 Total subtitle tracks added to composition: \(addedTracksCount) out of \(subtitleAssets.count)")
-        
+
         return composition
     }
     
@@ -1733,12 +1537,11 @@ open class FullScreenVideoPlayerView: UIView {
         videoTracks: [AVAssetTrack],
         audioTracks: [AVAssetTrack],
         subtitleTracks: [[String: Any]]
-    ) -> AVMutableComposition? {
+    ) async -> AVMutableComposition? {
         Self.logger.debug("🔧 createCompositionWithMultipleSubtitles called (non-HLS)")
         Self.logger.debug("   Input: \(subtitleTracks.count) subtitle tracks")
         let composition = AVMutableComposition()
-        
-        // Add video track
+
         guard let compositionVideoTrack = composition.addMutableTrack(
             withMediaType: .video,
             preferredTrackID: kCMPersistentTrackID_Invalid
@@ -1747,29 +1550,28 @@ open class FullScreenVideoPlayerView: UIView {
             return nil
         }
         Self.logger.notice(" Video track added to composition")
-        
+
         do {
-            // Add video
+            let duration = try await self.videoAsset.loadDurationValue()
+
             try compositionVideoTrack.insertTimeRange(
-                CMTimeRangeMake(start: .zero, duration: self.videoAsset.duration),
+                CMTimeRangeMake(start: .zero, duration: duration),
                 of: videoTracks[0],
                 at: .zero
             )
-            
-            // Add audio track if exists
+
             if !audioTracks.isEmpty,
                let compositionAudioTrack = composition.addMutableTrack(
                    withMediaType: .audio,
                    preferredTrackID: kCMPersistentTrackID_Invalid
                ) {
                 try compositionAudioTrack.insertTimeRange(
-                    CMTimeRangeMake(start: .zero, duration: self.videoAsset.duration),
+                    CMTimeRangeMake(start: .zero, duration: duration),
                     of: audioTracks[0],
                     at: .zero
                 )
             }
-            
-            // Add all subtitle tracks (same logic as HLS version)
+
             Self.logger.debug("📝 Processing \(subtitleTracks.count) subtitle tracks...")
             var subtitleAssets: [(asset: AVURLAsset, trackId: String, language: String)] = []
             
@@ -1858,29 +1660,9 @@ open class FullScreenVideoPlayerView: UIView {
                 subtitleAssets.append((asset: subtitleAsset, trackId: trackId, language: language))
             }
             
-            // Load and add subtitle tracks (simplified version for non-HLS)
-            // For non-HLS, we can use synchronous loading since tracks are already available
+            let loadedSubtitleAssets = await AVURLAsset.loadSubtitleAssets(subtitleAssets)
             var addedTracksCount = 0
-            for subtitleInfo in subtitleAssets {
-                // Load tracks synchronously (non-HLS files are typically local or small)
-                var error: NSError?
-                let status = subtitleInfo.asset.statusOfValue(forKey: "tracks", error: &error)
-                
-                if status != .loaded {
-                    subtitleInfo.asset.loadValuesAsynchronously(forKeys: ["tracks"]) {
-                        // Async load for remote files
-                    }
-                    // Wait a bit for async load
-                    Thread.sleep(forTimeInterval: 0.1)
-                }
-                
-                let subtitleAssetTracks = subtitleInfo.asset.tracks(withMediaType: .text)
-                guard !subtitleAssetTracks.isEmpty else {
-                    Self.logger.warning(" No text tracks found in subtitle asset for track: \(subtitleInfo.trackId)")
-                    continue
-                }
-                
-                // Use AVMediaType.subtitle for proper native menu support
+            for subtitleInfo in loadedSubtitleAssets {
                 Self.logger.debug("   🔧 Creating composition subtitle track for: \(subtitleInfo.trackId) (\(subtitleInfo.language))")
                 guard let compositionSubtitleTrack = composition.addMutableTrack(
                     withMediaType: .subtitle,
@@ -1890,23 +1672,23 @@ open class FullScreenVideoPlayerView: UIView {
                     continue
                 }
                 Self.logger.debug("   ✅ Created composition subtitle track successfully")
-                
+
                 do {
                     try compositionSubtitleTrack.insertTimeRange(
-                        CMTimeRangeMake(start: .zero, duration: self.videoAsset.duration),
-                        of: subtitleAssetTracks[0],
+                        CMTimeRangeMake(start: .zero, duration: duration),
+                        of: subtitleInfo.textTracks[0],
                         at: .zero
                     )
-                    
+
                     addedTracksCount += 1
                     Self.logger.notice(" Successfully added subtitle track: \(subtitleInfo.trackId) (\(subtitleInfo.language))")
                 } catch {
                     Self.logger.error(" Failed to insert subtitle track \(subtitleInfo.trackId): \(error)")
                 }
             }
-            
+
             Self.logger.debug("📊 Total subtitle tracks added to composition: \(addedTracksCount) out of \(subtitleAssets.count)")
-            
+
             return composition
         } catch {
             Self.logger.debug("Failed to create composition with multiple subtitles: \(error)")
@@ -1942,38 +1724,43 @@ open class FullScreenVideoPlayerView: UIView {
     }
     
     private func selectInitialTrack() {
+        Task { @MainActor in
+            await self.selectInitialTrackAsync()
+        }
+    }
+
+    @MainActor
+    private func selectInitialTrackAsync() async {
         guard let playerItem = self.playerItem else {
             Self.logger.warning(" selectInitialTrack: playerItem is nil")
             return
         }
-        
-        guard let mediaSelectionGroup = playerItem.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
+
+        guard let mediaSelectionGroup = try? await playerItem.asset.loadLegibleMediaSelectionGroup() else {
             Self.logger.warning(" selectInitialTrack: No subtitle selection group available")
-            Self.logger.debug("   Available media characteristics: \(playerItem.asset.availableMediaCharacteristicsWithMediaSelectionOptions)")
+            let characteristics = (try? await playerItem.asset.loadAvailableMediaCharacteristics()) ?? []
+            Self.logger.debug("   Available media characteristics: \(characteristics)")
             return
         }
-        
+
         Self.logger.debug("📋 Available subtitle options: \(mediaSelectionGroup.options.count)")
         for (index, option) in mediaSelectionGroup.options.enumerated() {
             Self.logger.debug("   Option \(index): lang=\(option.extendedLanguageTag ?? "nil"), locale=\(option.locale?.identifier ?? "nil"), displayName=\(option.displayName)")
         }
-        
-        // Only select a subtitle if explicitly requested via _selectedSubtitleId
+
         if let selectedId = self._selectedSubtitleId {
             Self.logger.debug("🎯 Attempting to select track by ID: \(selectedId)")
-            // Find matching option by language or track ID
             let options = mediaSelectionGroup.options.filter { option in
                 option.extendedLanguageTag == selectedId ||
-                option.locale?.languageCode == selectedId ||
+                option.modernLanguageCode == selectedId ||
                 option.displayName.contains(selectedId)
             }
-            
+
             if let option = options.first {
                 Self.logger.debug("   🎯 Found matching option: lang=\(option.extendedLanguageTag ?? "nil"), locale=\(option.locale?.identifier ?? "nil"), displayName=\(option.displayName)")
                 playerItem.select(option, in: mediaSelectionGroup)
                 Self.logger.notice(" Selected initial subtitle track: \(selectedId) (lang: \(option.extendedLanguageTag ?? "nil"), displayName: \(option.displayName))")
-                
-                // Verify selection was applied
+
                 let selectedOption = playerItem.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup)
                 Self.logger.debug("   ✅ Verified selection: \(selectedOption?.displayName ?? "nil")")
             } else {
@@ -1994,7 +1781,7 @@ open class FullScreenVideoPlayerView: UIView {
         guard let tracks = self._subtitleTracks else { return nil }
         let extTag = option.extendedLanguageTag?.lowercased()
         let localeId = option.locale?.identifier.lowercased()
-        let langCode = option.locale?.languageCode?.lowercased()
+        let langCode = option.modernLanguageCode?.lowercased()
         for track in tracks {
             guard let id = track["id"] as? String else { continue }
             guard let tLang = (track["language"] as? String)?.lowercased() else { continue }
@@ -2018,50 +1805,52 @@ open class FullScreenVideoPlayerView: UIView {
         
         // Use KVO to observe currentMediaSelection changes
         // This will fire when user changes subtitle selection in native menu
-        self.mediaSelectionObserver = playerItem.observe(\.currentMediaSelection, options: [.new, .old]) { [weak self] item, change in
+        self.mediaSelectionObserver = playerItem.observe(\.currentMediaSelection, options: [.new, .old]) { [weak self] item, _ in
             guard let self = self else { return }
             Self.logger.debug("🎧 Media selection changed (user clicked in native menu)")
-            
-            guard let mediaSelectionGroup = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
-                Self.logger.debug("   ⚠️ Could not get media selection group")
-                return
-            }
-            
-            let selectedOption = item.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup)
-            if let option = selectedOption {
-                Self.logger.debug("   ✅ User selected subtitle: lang=\(option.extendedLanguageTag ?? "nil"), locale=\(option.locale?.identifier ?? "nil"), displayName=\(option.displayName)")
-                
-                let manifestId = self.resolvedManifestSubtitleTrackId(for: option)
-                if let mid = manifestId {
-                    self._activeSubtitleTrackId = mid
-                } else if let localeId = option.locale?.identifier {
-                    self._activeSubtitleTrackId = localeId
-                } else if let langTag = option.extendedLanguageTag {
-                    self._activeSubtitleTrackId = langTag
+
+            Task { @MainActor in
+                guard let mediaSelectionGroup = try? await item.asset.loadLegibleMediaSelectionGroup() else {
+                    Self.logger.debug("   ⚠️ Could not get media selection group")
+                    return
+                }
+
+                let selectedOption = item.currentMediaSelection.selectedMediaOption(in: mediaSelectionGroup)
+                if let option = selectedOption {
+                    Self.logger.debug("   ✅ User selected subtitle: lang=\(option.extendedLanguageTag ?? "nil"), locale=\(option.locale?.identifier ?? "nil"), displayName=\(option.displayName)")
+
+                    let manifestId = self.resolvedManifestSubtitleTrackId(for: option)
+                    if let mid = manifestId {
+                        self._activeSubtitleTrackId = mid
+                    } else if let localeId = option.locale?.identifier {
+                        self._activeSubtitleTrackId = localeId
+                    } else if let langTag = option.extendedLanguageTag {
+                        self._activeSubtitleTrackId = langTag
+                    } else {
+                        self._activeSubtitleTrackId = option.displayName
+                    }
+                    Self.logger.debug("   📝 Updated _activeSubtitleTrackId to: \(self._activeSubtitleTrackId ?? "nil")")
+                    let langCode: String
+                    if let tag = option.extendedLanguageTag, !tag.isEmpty {
+                        langCode = tag
+                    } else if let lid = option.locale?.identifier, !lid.isEmpty {
+                        langCode = lid
+                    } else {
+                        langCode = "und"
+                    }
+                    if !self.suppressSubtitleBridgeEvents {
+                        self.postSubtitleBridgeEvent(language: langCode, trackId: manifestId)
+                    }
                 } else {
-                    self._activeSubtitleTrackId = option.displayName
-                }
-                Self.logger.debug("   📝 Updated _activeSubtitleTrackId to: \(self._activeSubtitleTrackId ?? "nil")")
-                let langCode: String
-                if let tag = option.extendedLanguageTag, !tag.isEmpty {
-                    langCode = tag
-                } else if let lid = option.locale?.identifier, !lid.isEmpty {
-                    langCode = lid
-                } else {
-                    langCode = "und"
-                }
-                if !self.suppressSubtitleBridgeEvents {
-                    self.postSubtitleBridgeEvent(language: langCode, trackId: manifestId)
-                }
-            } else {
-                Self.logger.debug("   ℹ️ User deselected subtitles (selected nil)")
-                self._activeSubtitleTrackId = nil
-                if !self.suppressSubtitleBridgeEvents {
-                    self.postSubtitleBridgeEvent(language: "off", trackId: nil)
+                    Self.logger.debug("   ℹ️ User deselected subtitles (selected nil)")
+                    self._activeSubtitleTrackId = nil
+                    if !self.suppressSubtitleBridgeEvents {
+                        self.postSubtitleBridgeEvent(language: "off", trackId: nil)
+                    }
                 }
             }
         }
-        
+
         Self.logger.debug("   ✅ Media selection observer added")
         self.scheduleSubtitleBridgeUnsuppress()
     }
@@ -2490,9 +2279,7 @@ open class FullScreenVideoPlayerView: UIView {
         self.player?.currentItem?.canUseNetworkResourcesForLiveStreamingWhilePaused = false
         
         // Disable audio enhancement features that cause errors
-        if #available(iOS 15.0, *) {
-            self.player?.currentItem?.preferredPeakBitRate = 0
-        }
+        self.player?.currentItem?.preferredPeakBitRate = 0
         
         // Additional optimizations to prevent HAL errors
         self.player?.currentItem?.preferredMaximumResolution = CGSize(width: 1920, height: 1080)
@@ -2502,11 +2289,7 @@ open class FullScreenVideoPlayerView: UIView {
         }
         self.videoPlayer.player = self.player
         self.videoPlayer.updatesNowPlayingInfoCenter = false
-        if #available(iOS 13.0, *) {
-            self.videoPlayer.isModalInPresentation = true
-        } else {
-            // Fallback on earlier versions
-        }
+        self.videoPlayer.isModalInPresentation = true
         self.videoPlayer.allowsPictureInPicturePlayback = false
         if isPIPModeAvailable && self._pipEnabled {
             self.videoPlayer.allowsPictureInPicturePlayback = true
@@ -2549,10 +2332,8 @@ open class FullScreenVideoPlayerView: UIView {
         // Set preferred buffer duration (non-critical, continue on error)
         try? audioSession.setPreferredIOBufferDuration(0.02)
         
-        // Disable interruptions (iOS 15+, non-critical)
-        if #available(iOS 15.0, *) {
-            try? audioSession.setPrefersNoInterruptionsFromSystemAlerts(true)
-        }
+        // Disable interruptions (non-critical)
+        try? audioSession.setPrefersNoInterruptionsFromSystemAlerts(true)
         
         // Activate the session
         do {
@@ -2968,7 +2749,13 @@ open class FullScreenVideoPlayerView: UIView {
         return isVideoEnded
     }
     @objc func getDuration() -> Double {
-        return Double(CMTimeGetSeconds(self.videoAsset.duration))
+        if let item = self.playerItem, item.duration.isValid && !item.duration.isIndefinite {
+            return item.duration.seconds
+        }
+        if self._duration > 0 {
+            return self._duration
+        }
+        return 0
     }
     @objc func getCurrentTime() -> Double {
         return self.player?.currentTime().seconds ?? 0.0
@@ -3231,7 +3018,7 @@ open class FullScreenVideoPlayerView: UIView {
             guard let self = self else { return }
             
             // Only send updates when video is playing
-            guard self.isPlaying, let playerItem = self.playerItem else {
+            guard self.isPlaying, self.playerItem != nil else {
                 return
             }
             
