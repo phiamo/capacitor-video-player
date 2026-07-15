@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.2.11] - 2026-07-15
+
+### Fixed
+- **Android:** Replace deprecated `SYSTEM_UI_FLAG_*` fullscreen APIs with `WindowCompat` / `WindowInsetsControllerCompat` for true edge-to-edge fullscreen on targetSdk 36.
+- **Android:** Use `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` in fullscreen to eliminate white strip around camera cutout in landscape; reset to `DEFAULT` on exit.
+- **iOS:** Emit `jeepCapVideoPlayerExit` when user closes native fullscreen via Done/X.
+- **iOS:** Prevent Epic 45 handoff from dismissing video during open; improve fullscreen handling during app backgrounding.
+
 ## [8.2.10] - 2026-07-15
 
 ### Fixed
