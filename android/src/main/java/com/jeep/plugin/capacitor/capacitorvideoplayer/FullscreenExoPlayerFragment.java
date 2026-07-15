@@ -84,6 +84,7 @@ import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.util.Util;
+import com.google.android.exoplayer2.video.VideoSize;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.android.gms.cast.framework.CastState;
@@ -332,6 +333,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
 
         @Override
+        public void onVideoSizeChanged(VideoSize videoSize) {
+          if (styledPlayerView == null || videoSize.width <= 0 || videoSize.height <= 0) {
+            return;
+          }
+          styledPlayerView.post(() -> adjustAspectRatio());
+        }
+
+        @Override
         public void onPlayerStateChanged(boolean playWhenReady, int state) {
           String stateString;
           Map<String, Object> info = new HashMap<String, Object>() {
@@ -571,8 +580,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
       Log.d(TAG, "Video path wrong or type not supported");
       Toast.makeText(context, "Video path wrong or type not supported", Toast.LENGTH_SHORT).show();
     }
-    adjustAspectRatio();
-    view.post(this::adjustAspectRatio);
     return view;
   }
 
@@ -874,9 +881,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     //if (chromecast && castContext != null) castContext.addCastStateListener(castStateListener);
     if (!isInPictureInPictureMode) {
       hideSystemUi();
-      if (firstReadyToPlay && getView() != null) {
-        getView().post(this::adjustAspectRatio);
-      }
       if ((Util.SDK_INT < 24 || player == null)) {
         initializePlayer();
       }
@@ -1854,6 +1858,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
     if (!isAdded() || getView() == null || styledPlayerView == null || resizeBtn == null) {
       return;
     }
+    if (!hasValidVideoSize()) {
+      return;
+    }
     if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
       styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
       resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FILL;
@@ -1863,5 +1870,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
       resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
       resizeBtn.setImageResource(R.drawable.ic_expand);
     }
+    styledPlayerView.requestLayout();
+  }
+
+  private boolean hasValidVideoSize() {
+    if (player == null) {
+      return false;
+    }
+    Format format = player.getVideoFormat();
+    return format != null && format.width > 0 && format.height > 0;
   }
 }

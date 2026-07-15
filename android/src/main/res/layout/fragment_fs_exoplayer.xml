@@ -21,7 +21,7 @@
       app:use_controller="true"
       app:show_buffering="never"
       app:animation_enabled="false"
-      android:animateLayoutChanges="true"
+      app:resize_mode="fit"
       app:controller_layout_id="@layout/exo_playback_control_view"/>
 
     <ProgressBar

@@ -1,5 +1,10 @@
 # Changelog
 
+## [8.2.9] - 2026-07-15
+
+### Fixed
+- **Android:** Defer resize-mode selection until ExoPlayer reports video dimensions (`onVideoSizeChanged`), preventing horizontal stretch when opening fullscreen in landscape before stream metadata is available. Default player view resize mode is now FIT until orientation-based mode is applied.
+
 ## [8.2.8] - 2026-07-15
 
 ### Fixed
