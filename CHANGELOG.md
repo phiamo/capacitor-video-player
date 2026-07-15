@@ -1,5 +1,10 @@
 # Changelog
 
+## [8.2.8] - 2026-07-15
+
+### Fixed
+- **Android:** Re-apply video resize mode after the player becomes ready and after immersive fullscreen UI settles, fixing incorrect aspect ratio when opening fullscreen video while the device is already in landscape (previously required tapping the resize button once).
+
 ## [8.2.1] - 2026-04-19
 
 ### Fixed

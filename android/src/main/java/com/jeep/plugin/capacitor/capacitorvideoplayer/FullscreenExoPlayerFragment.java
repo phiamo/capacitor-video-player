@@ -379,6 +379,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 play();
                 Log.v(TAG, "**** in ExoPlayer.STATE_READY firstReadyToPlay player.isPlaying" + player.isPlaying());
                 player.seekTo(currentWindow, playbackPosition);
+                styledPlayerView.post(() -> adjustAspectRatio());
 
                 // We show progress bar, position and duration only when the video is not live
                 if (!player.isCurrentMediaItemLive()) {
@@ -571,6 +572,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
       Toast.makeText(context, "Video path wrong or type not supported", Toast.LENGTH_SHORT).show();
     }
     adjustAspectRatio();
+    view.post(this::adjustAspectRatio);
     return view;
   }
 
@@ -872,6 +874,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
     //if (chromecast && castContext != null) castContext.addCastStateListener(castStateListener);
     if (!isInPictureInPictureMode) {
       hideSystemUi();
+      if (firstReadyToPlay && getView() != null) {
+        getView().post(this::adjustAspectRatio);
+      }
       if ((Util.SDK_INT < 24 || player == null)) {
         initializePlayer();
       }
