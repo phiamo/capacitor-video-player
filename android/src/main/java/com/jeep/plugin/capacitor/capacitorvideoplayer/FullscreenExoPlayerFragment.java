@@ -1854,6 +1854,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
     adjustAspectRatio();
   }
 
+  /**
+   * Re-applies the current resize mode (does NOT change it based on device orientation —
+   * switching FIT/FILL on rotation caused unwanted cropping for non-16:9 source video).
+   * Only forces a fresh layout pass so the AspectRatioFrameLayout picks up the settled
+   * container size / known video dimensions after rotation, first-ready, etc.
+   */
   private void adjustAspectRatio() {
     if (!isAdded() || getView() == null || styledPlayerView == null || resizeBtn == null) {
       return;
@@ -1861,15 +1867,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     if (!hasValidVideoSize()) {
       return;
     }
-    if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-      styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-      resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FILL;
-      resizeBtn.setImageResource(R.drawable.ic_zoom);
-    } else if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
-      styledPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-      resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
-      resizeBtn.setImageResource(R.drawable.ic_expand);
-    }
+    styledPlayerView.setResizeMode(resizeStatus);
     styledPlayerView.requestLayout();
   }
 

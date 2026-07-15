@@ -1,5 +1,10 @@
 # Changelog
 
+## [8.2.10] - 2026-07-15
+
+### Fixed
+- **Android:** `adjustAspectRatio()` no longer switches resize mode (FIT/FILL) based on device orientation on rotation. It now only re-applies the *current* resize mode and forces a relayout. Previously rotating a fullscreen video from portrait to landscape force-switched to FILL, cropping content unacceptably for non-16:9 sources; users had to tap the resize button twice to get back to FIT.
+
 ## [8.2.9] - 2026-07-15
 
 ### Fixed
