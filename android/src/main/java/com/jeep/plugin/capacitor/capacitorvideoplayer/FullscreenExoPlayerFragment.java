@@ -29,6 +29,7 @@ import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.view.WindowManager;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -40,6 +41,9 @@ import androidx.annotation.RequiresApi;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.core.graphics.drawable.DrawableCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.fragment.app.Fragment;
 import androidx.mediarouter.app.MediaRouteButton;
 import androidx.mediarouter.media.MediaControlIntent;
@@ -494,9 +498,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
       Log.v(TAG, "display vType: " + vType);
     }
     if (uri != null || isInternal) {
-      // go fullscreen
-      getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-      getActivity().getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+      // go fullscreen (edge-to-edge; legacy FLAG_FULLSCREEN is ignored on targetSdk 35+)
+      hideSystemUi();
       if (savedInstanceState != null) {
         mCurrentPosition = savedInstanceState.getInt(PLAYBACK_TIME);
       }
@@ -906,27 +909,62 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   /**
-   * Hide System UI
+   * Hide System UI using edge-to-edge APIs (required for targetSdk 35+/36).
    */
   @SuppressLint("InlinedApi")
   private void hideSystemUi() {
-    if (styledPlayerView != null) styledPlayerView.setSystemUiVisibility(
-      View.SYSTEM_UI_FLAG_LOW_PROFILE |
-        View.SYSTEM_UI_FLAG_FULLSCREEN |
-        View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
-        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-    );
+    Activity activity = getActivity();
+    if (activity == null) {
+      return;
+    }
+    Window window = activity.getWindow();
+    if (window == null) {
+      return;
+    }
+
+    WindowCompat.setDecorFitsSystemWindows(window, false);
+    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      WindowManager.LayoutParams attrs = window.getAttributes();
+      attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+      window.setAttributes(attrs);
+    }
+
+    View decorView = window.getDecorView();
+    WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, decorView);
+    if (controller != null) {
+      controller.hide(WindowInsetsCompat.Type.systemBars());
+      controller.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+    }
   }
 
   /**
-   * Leave the fullsreen mode and reset the status bar to visible
+   * Leave the fullscreen mode and restore system bars.
    */
   private void showSystemUI() {
-    getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-    getActivity().getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    getActivity().getWindow().getDecorView().setSystemUiVisibility(View.VISIBLE);
+    Activity activity = getActivity();
+    if (activity == null) {
+      return;
+    }
+    Window window = activity.getWindow();
+    if (window == null) {
+      return;
+    }
+
+    WindowCompat.setDecorFitsSystemWindows(window, true);
+    window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      WindowManager.LayoutParams attrs = window.getAttributes();
+      attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+      window.setAttributes(attrs);
+    }
+
+    View decorView = window.getDecorView();
+    WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, decorView);
+    if (controller != null) {
+      controller.show(WindowInsetsCompat.Type.systemBars());
+    }
   }
 
   /**
