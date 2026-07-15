@@ -74,10 +74,9 @@ extension CapacitorVideoPlayerPlugin {
                         }
                     }
                 } else {
-                    if self.videoPlayerFullScreenView != nil {
-
-                        self.videoPlayerFullScreenView?
-                            .videoPlayer.player?.pause()
+                    if !isInPIPMode, let playerView = self.videoPlayerFullScreenView {
+                        // Epic 45 handoff: playlist owns background audio — dismiss native fullscreen.
+                        NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
                     }
                 }
             }
@@ -99,19 +98,8 @@ extension CapacitorVideoPlayerPlugin {
                         self.videoPlayerFullScreenView?
                             .videoPlayer.player = self.bgPlayer
                     }
-                } else {
-                    if self.videoPlayerFullScreenView != nil {
-
-                        if let playerItem =
-                            self.videoPlayerFullScreenView?.playerItem {
-                            self.videoTrackEnable(playerItem: playerItem,
-                                                  enable: true)
-                        }
-                        self.videoPlayerFullScreenView?
-                            .videoPlayer.player?.play()
-                    }
-
                 }
+                // Handoff mode (backModeEnabled=false): do not auto-resume native video on foreground.
             }
     }
     // swiftlint:enable function_body_length

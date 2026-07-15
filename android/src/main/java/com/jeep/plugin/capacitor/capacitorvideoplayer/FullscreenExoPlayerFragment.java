@@ -792,8 +792,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
   public void onStop() {
     super.onStop();
     notifyAppBackgroundWhilePlayingIfNeeded();
-    boolean isAppBackground = false;
-    if (bkModeEnabled) isAppBackground = isApplicationSentToBackground(context);
     if (isInPictureInPictureMode) {
       linearLayout.setVisibility(View.VISIBLE);
       playerExit();
@@ -803,6 +801,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
       // emits jeepCapVideoPlayerExit which gives the WebView layer a chance to call
       // endVideoSession and restore the audio session cleanly.
       isInPictureInPictureMode = false;
+      return;
+    }
+    // Epic 45 handoff (bkmodeEnabled=false): dismiss fullscreen when the app backgrounds so the
+    // native overlay cannot survive a foreground return if JS is throttled in the WebView.
+    if (!bkModeEnabled && isApplicationSentToBackground(context)) {
+      playerExit();
     }
   }
 
