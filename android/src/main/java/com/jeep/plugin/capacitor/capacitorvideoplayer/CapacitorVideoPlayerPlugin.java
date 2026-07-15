@@ -1283,7 +1283,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                                         FrameLayout frameLayoutView = getBridge().getActivity().findViewById(frameLayoutViewId);
 
                                         if (frameLayoutView != null) {
-                                            ((ViewGroup) getBridge().getWebView().getParent()).removeView(frameLayoutView);
+                                            getOverlayRoot().removeView(frameLayoutView);
                                             fragmentUtils.removeFragment(fsFragment);
                                         }
                                         fsFragment = null;
@@ -1316,7 +1316,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                                         FrameLayout frameLayoutView = getBridge().getActivity().findViewById(frameLayoutViewId);
 
                                         if (frameLayoutView != null) {
-                                            ((ViewGroup) getBridge().getWebView().getParent()).removeView(frameLayoutView);
+                                            getOverlayRoot().removeView(frameLayoutView);
                                             fragmentUtils.removeFragment(fsFragment);
                                         }
                                         fsFragment = null;
@@ -1339,7 +1339,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         // Get the previously saved call
                         FrameLayout pickerLayoutView = getBridge().getActivity().findViewById(pickerLayoutViewId);
                         if (pickerLayoutView != null) {
-                            ((ViewGroup) getBridge().getWebView().getParent()).removeView(pickerLayoutView);
+                            getOverlayRoot().removeView(pickerLayoutView);
                             fragmentUtils.removeFragment(pkFragment);
                         }
                         pkFragment = null;
@@ -1466,7 +1466,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                             // Apply the Layout Parameters to frameLayout
                             frameLayoutView.setLayoutParams(lp);
 
-                            ((ViewGroup) getBridge().getWebView().getParent()).addView(frameLayoutView);
+                            getOverlayRoot().addView(frameLayoutView);
                             fragmentUtils.loadFragment(fsFragment, frameLayoutViewId);
                             ret.put("result", true);
                         }
@@ -1502,7 +1502,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                             // Apply the Layout Parameters to frameLayout
                             pickerLayoutView.setLayoutParams(lp);
 
-                            ((ViewGroup) getBridge().getWebView().getParent()).addView(pickerLayoutView);
+                            getOverlayRoot().addView(pickerLayoutView);
                             fragmentUtils.loadFragment(pkFragment, pickerLayoutViewId);
                             ret.put("result", true);
                         }
@@ -1510,6 +1510,13 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                     }
                 }
             );
+    }
+
+    /**
+     * Activity content root for fullscreen overlays — unpadded by Capacitor SystemBars inset handling.
+     */
+    private ViewGroup getOverlayRoot() {
+        return getBridge().getActivity().findViewById(android.R.id.content);
     }
 
     @PluginMethod

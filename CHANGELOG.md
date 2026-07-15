@@ -1,5 +1,10 @@
 # Changelog
 
+## [8.2.12] - 2026-07-15
+
+### Fixed
+- **Android:** Attach fullscreen video and picker overlays to `android.R.id.content` instead of the WebView's padded parent. On Android 15+ Capacitor SystemBars applies native padding to the WebView parent for safe-area insets; overlays on that parent were 136px short of true edge-to-edge width in landscape.
+
 ## [8.2.11] - 2026-07-15
 
 ### Fixed
