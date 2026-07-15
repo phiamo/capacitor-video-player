@@ -2576,7 +2576,7 @@ open class FullScreenVideoPlayerView: UIView {
             .observe(\.view.frame, options: [.new, .old],
                      changeHandler: {[weak self] (_, _) in
                         guard let self = self else { return }
-                        if !isInPIPMode {
+                        if !isInPIPMode && !isOpeningNativeFullscreen && self._isReadyToPlay {
                             if self.videoPlayer.isBeingDismissed && !isVideoEnded {
                                 NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
                             }
@@ -2587,7 +2587,7 @@ open class FullScreenVideoPlayerView: UIView {
             .observe(\.view.center, options: [.new, .old],
                      changeHandler: {[weak self] (_, _) in
                         guard let self = self else { return }
-                        if !isInPIPMode {
+                        if !isInPIPMode && !isOpeningNativeFullscreen && self._isReadyToPlay {
                             if self.videoPlayer.isBeingDismissed && !isVideoEnded {
                                 NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
                             }

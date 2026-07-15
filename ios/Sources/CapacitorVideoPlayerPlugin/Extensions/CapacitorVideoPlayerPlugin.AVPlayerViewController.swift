@@ -14,6 +14,8 @@ var isPIPModeAvailable: Bool = false
 var isVideoEnded: Bool = false
 var isRateZero: Bool = false
 var isPlayerViewRestored: Bool = false
+/** Suppress spurious fullscreen dismiss KVO while AVPlayerViewController is presenting. */
+var isOpeningNativeFullscreen: Bool = false
 
 extension CapacitorVideoPlayerPlugin: AVPlayerViewControllerDelegate {
 

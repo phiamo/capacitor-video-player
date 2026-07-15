@@ -74,7 +74,9 @@ extension CapacitorVideoPlayerPlugin {
                         }
                     }
                 } else {
-                    if !isInPIPMode, let playerView = self.videoPlayerFullScreenView {
+                    if !isInPIPMode,
+                       let playerView = self.videoPlayerFullScreenView,
+                       playerView.isPlaying {
                         // Epic 45 handoff: playlist owns background audio — dismiss native fullscreen.
                         NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
                     }
