@@ -108,6 +108,9 @@ extension CapacitorVideoPlayerPlugin {
     // MARK: - playerFullscreenDismiss
 
     @objc func playerFullscreenDismiss(notification: Notification) {
+        if self.isPlayerDismissed {
+            return
+        }
 
         var currentTime: Double = 0.0
         if let playerView = self.videoPlayerFullScreenView {

@@ -51,11 +51,16 @@ extension CapacitorVideoPlayerPlugin: AVPlayerViewControllerDelegate {
         }
 
     }
-    /*    public func playerViewController(_ playerViewController: AVPlayerViewController, willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator) {
-     if playerViewController.isBeingDismissed {
-     playerViewController.dismiss(animated: false) {
-     print(">>>>> playerViewController has been dismiss ")
-     }
-     }
-     }
-     */}
+
+    /// User tapped Done/X on native fullscreen — KVO alone is unreliable on modern iOS.
+    public func playerViewController(
+        _ playerViewController: AVPlayerViewController,
+        willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
+    ) {
+        if isOpeningNativeFullscreen || isVideoEnded || self.isPlayerDismissed {
+            return
+        }
+        print("[CapacitorVideoPlayer] willEndFullScreenPresentation — user closed native fullscreen")
+        NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
+    }
+}
