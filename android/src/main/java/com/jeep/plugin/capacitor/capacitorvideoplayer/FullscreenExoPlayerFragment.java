@@ -277,10 +277,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
       // This prevents Play Store warnings about ignored orientation restrictions
       if (Build.VERSION.SDK_INT < 36) {
         if (displayMode.equals("landscape")) {
-          mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+          mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
         }
         if (displayMode.equals("portrait")) {
-          mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+          mAct.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         }
       }
     } else {
