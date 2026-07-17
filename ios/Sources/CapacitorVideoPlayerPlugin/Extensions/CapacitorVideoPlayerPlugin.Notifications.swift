@@ -56,9 +56,8 @@ extension CapacitorVideoPlayerPlugin {
         DispatchQueue.main.async {
             self.notifyListeners("jeepCapVideoPlayerReady", data: info, retainUntilConsumed: true)
             if self.mode == "fullscreen" && playerId == self.fsPlayerId {
-                if let vPFSV = self.videoPlayerFullScreenView {
-                    vPFSV.play()
-                }
+                self.isPlayerItemReadyForInitialPlayback = true
+                self.startFullscreenPlaybackIfNeeded()
             }
             return
         }
@@ -102,6 +101,36 @@ extension CapacitorVideoPlayerPlugin {
         guard let info = notification.userInfo as? [String: Any] else { return }
         DispatchQueue.main.async {
             self.notifyListeners("jeepCapVideoPlayerSubtitleChange", data: info, retainUntilConsumed: true)
+        }
+    }
+
+    // MARK: - Picture-in-Picture bridge events
+
+    func notifyPictureInPictureStart() {
+        var currentTime: Double = 0.0
+        if let playerView = self.videoPlayerFullScreenView {
+            currentTime = playerView.getRealCurrentTime()
+        }
+        let info: [String: Any] = [
+            "fromPlayerId": self.fsPlayerId,
+            "currentTime": currentTime
+        ]
+        DispatchQueue.main.async {
+            self.notifyListeners("jeepCapVideoPlayerPipStart", data: info, retainUntilConsumed: true)
+        }
+    }
+
+    func notifyPictureInPictureStop() {
+        var currentTime: Double = 0.0
+        if let playerView = self.videoPlayerFullScreenView {
+            currentTime = playerView.getRealCurrentTime()
+        }
+        let info: [String: Any] = [
+            "fromPlayerId": self.fsPlayerId,
+            "currentTime": currentTime
+        ]
+        DispatchQueue.main.async {
+            self.notifyListeners("jeepCapVideoPlayerPipStop", data: info, retainUntilConsumed: true)
         }
     }
 

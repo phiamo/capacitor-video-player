@@ -1,5 +1,11 @@
 # Changelog
 
+## [8.2.13] - 2026-07-17
+
+### Fixed
+- **iOS:** Set `isInPIPMode` in `AVPictureInPictureControllerDelegate.pictureInPictureControllerWillStartPictureInPicture` before `didEnterBackground`, so Epic 45 handoff does not tear down the player during PiP transition (fixes crash and audio-only PiP).
+- **iOS/Android:** Emit `jeepCapVideoPlayerPipStart` / `jeepCapVideoPlayerPipStop` bridge events for JS PiP-aware background handling.
+
 ## [8.2.12] - 2026-07-15
 
 ### Fixed

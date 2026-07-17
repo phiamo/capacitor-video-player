@@ -30,6 +30,9 @@ open class FullScreenVideoPlayerView: UIView {
     private var _loopOnEnd: Bool = false
     private var _pipEnabled: Bool = true
     private var _firstReadyToPlay: Bool = true
+    private var _initialPlaybackStarted: Bool = false
+    /// Present completion already activated AVAudioSession — skip deactivate/reactivate on first play.
+    private var _skipAudioSessionReconfigurationForNextPlay: Bool = false
     private var _stUrl: URL?
     private var _stLanguage: String?
     private var _stHeaders: [String: String]?
@@ -360,9 +363,6 @@ open class FullScreenVideoPlayerView: UIView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self else { return }
             self.addSubtitlesToPlayer(subTitleUrl: subTitleUrl)
-            
-            // Auto-play for HLS streams with subtitles
-            self.autoPlayIfHLSReady()
         }
     }
     
@@ -717,9 +717,6 @@ open class FullScreenVideoPlayerView: UIView {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self else { return }
             self.setInitialSubtitleSelection()
-            
-            // Auto-play for HLS streams with subtitles
-            self.autoPlayIfHLSReady()
         }
     }
     
@@ -2270,9 +2267,7 @@ open class FullScreenVideoPlayerView: UIView {
     }
     
     private func setupPlayer() {
-        // Configure audio session to prevent HALC overload
-        self.configureAudioSession()
-        
+        // Audio session is configured at present completion and before first play — not here.
         // Optimize audio processing to prevent HALC overload
         self.player?.currentItem?.audioTimePitchAlgorithm = .timeDomain
         self.player?.currentItem?.preferredForwardBufferDuration = 5.0
@@ -2296,6 +2291,129 @@ open class FullScreenVideoPlayerView: UIView {
         }
 
         self._isLoaded.updateValue(false, forKey: self._videoId)
+        self.reattachPlaybackObservers()
+    }
+
+    /// `addObservers()` runs in `init` before async `playerItem` creation — attach KVO to the live item/player.
+    private func reattachPlaybackObservers() {
+        self.itemStatusObserver?.invalidate()
+        self.itemBufferObserver?.invalidate()
+        self.playerRateObserver?.invalidate()
+
+        self.itemStatusObserver = self.playerItem?
+            .observe(\.status, options: [.new, .old],
+                     changeHandler: {[weak self] (playerItem, _) in
+                        guard let self = self else { return }
+                        switch playerItem.status {
+                        case .readyToPlay:
+                            if self._firstReadyToPlay {
+                                self._isLoaded.updateValue(true, forKey: self._videoId)
+                                self._isReadyToPlay = true
+                                isVideoEnded = false
+                                if let item = self.playerItem {
+                                    self._currentTime = CMTimeGetSeconds(item.currentTime())
+                                }
+                                let vId: [String: Any] = ["fromPlayerId": self._videoId, "currentTime": self._currentTime,
+                                                          "videoRate": self._videoRate]
+                                NotificationCenter.default.post(name: .playerItemReady, object: nil, userInfo: vId)
+                                self._firstReadyToPlay = false
+
+                                self.setNowPlayingInfo()
+                                self.setRemoteCommandCenter()
+                                self.setNowPlayingImage()
+                            }
+                        case .failed:
+                            Self.logger.debug("failing to load")
+                            self._isLoaded.updateValue(false, forKey: self._videoId)
+                        case .unknown:
+                            Self.logger.debug("playerItem not yet ready")
+                        @unknown default:
+                            Self.logger.debug("playerItem Error \(String(describing: self.playerItem?.error))")
+                        }
+                     })
+
+        self.itemBufferObserver = self.playerItem?
+            .observe(\.isPlaybackBufferEmpty,
+                     options: [.new, .old], changeHandler: {[weak self] (playerItem, _) in
+                        guard let self = self else { return }
+                        let empty: Bool = ((self.playerItem?.isPlaybackBufferEmpty) != nil)
+                        if empty {
+                            self._isBufferEmpty.updateValue(true, forKey: self._videoId)
+                        } else {
+                            self._isBufferEmpty.updateValue(false, forKey: self._videoId)
+                        }
+                     })
+
+        self.playerRateObserver = self.player?
+            .observe(\.rate, options: [.new, .old], changeHandler: {[weak self] (player, _) in
+                guard let self = self else { return }
+                let rate: Float = player.rate
+                if let item = self.playerItem {
+                    self._currentTime = CMTimeGetSeconds(item.currentTime())
+                    self._duration = CMTimeGetSeconds(item.duration)
+                }
+                let vId: [String: Any] = [
+                    "fromPlayerId": self._videoId,
+                    "currentTime": self._currentTime,
+                    "videoRate": self._videoRate
+                ]
+
+                if !(self._isLoaded[self._videoId] ?? true) {
+                    Self.logger.debug("AVPlayer Rate for player \(self._videoId): Loading")
+                } else if rate > 0 && self._isReadyToPlay {
+                    if rate != self._videoRate {
+                        player.rate = self._videoRate
+                    }
+
+                    self.isPlaying = true
+                    self.startPositionUpdates()
+                    NotificationCenter.default.post(name: .playerItemPlay, object: nil, userInfo: vId)
+                } else if rate == 0 && !isVideoEnded && abs(self._currentTime - self._duration) < 0.2 {
+                    self.isPlaying = false
+                    let fromLoop = self._currentTime
+                    player.seek(to: CMTime.zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                        guard let self = self, finished else { return }
+                        DispatchQueue.main.async {
+                            self._currentTime = 0
+                            self.postSeekBridgeEvent(fromSeconds: fromLoop, toSeconds: 0)
+                        }
+                    }
+                    if self._exitOnEnd {
+                        isVideoEnded = true
+                        NotificationCenter.default.post(name: .playerItemEnd, object: nil, userInfo: vId)
+                    } else if self._loopOnEnd {
+                        self.play()
+                    }
+                } else if rate == 0 {
+                    if !isInPIPMode && !isInBackgroundMode && !isRateZero {
+                        self.isPlaying = false
+                        if !self.videoPlayer.isBeingDismissed {
+                            Self.logger.debug("AVPlayer Rate for player \(self._videoId): Paused")
+                            NotificationCenter.default.post(name: .playerItemPause, object: nil, userInfo: vId)
+                        }
+                    } else {
+                        isRateZero = true
+                    }
+                } else if self._isBufferEmpty[self._videoId] ?? true {
+                    Self.logger.debug("AVPlayer Rate for player \(self._videoId): Buffer Empty Loading")
+                }
+            })
+
+        if self.playerItem?.status == .readyToPlay, self._firstReadyToPlay {
+            self._isLoaded.updateValue(true, forKey: self._videoId)
+            self._isReadyToPlay = true
+            isVideoEnded = false
+            if let item = self.playerItem {
+                self._currentTime = CMTimeGetSeconds(item.currentTime())
+            }
+            let vId: [String: Any] = ["fromPlayerId": self._videoId, "currentTime": self._currentTime,
+                                      "videoRate": self._videoRate]
+            NotificationCenter.default.post(name: .playerItemReady, object: nil, userInfo: vId)
+            self._firstReadyToPlay = false
+            self.setNowPlayingInfo()
+            self.setRemoteCommandCenter()
+            self.setNowPlayingImage()
+        }
     }
     
     // MARK: - Audio Session Configuration
@@ -2390,35 +2508,18 @@ open class FullScreenVideoPlayerView: UIView {
     // MARK: - Auto-play for HLS streams
     
     private func autoPlayIfHLSReady() {
-        // Check if this is an HLS stream
-        let isHLSStream = FullScreenVideoPlayerView.isHLSStream(url: self._url)
-        
-        if isHLSStream {
-            
-            // Small delay to ensure everything is properly set up
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self = self else { return }
-                
-                // Start playing the HLS stream
-                self.player?.play()
-                self.player?.rate = self._videoRate
-                self.isPlaying = true
-                
-                Self.logger.notice(" HLS stream auto-play started")
-                
-                // Start position updates
-                self.startPositionUpdates()
-                
-                // Notify that playback has started
-                let vId: [String: Any] = [
-                    "fromPlayerId": self._videoId,
-                    "currentTime": self._currentTime,
-                    "videoRate": self._videoRate
-                ]
-                NotificationCenter.default.post(name: .playerItemPlay, object: nil, userInfo: vId)
-            }
-        } else {
+        // Legacy hook — first playback is owned by playerItemReady (seek-then-play or play).
+        guard !self._initialPlaybackStarted else { return }
+        guard FullScreenVideoPlayerView.isHLSStream(url: self._url) else {
             Self.logger.debug("📹 Non-HLS stream - no auto-play")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            guard !self._initialPlaybackStarted else { return }
+            guard !(self.isPlaying || (self.player?.rate ?? 0) > 0) else { return }
+            self.play()
+            Self.logger.notice(" HLS stream auto-play started")
         }
     }
     
@@ -2466,112 +2567,6 @@ open class FullScreenVideoPlayerView: UIView {
     // swiftlint:disable function_body_length
     // swiftlint:disable cyclomatic_complexity
     private func addObservers() {
-
-        self.itemStatusObserver = self.playerItem?
-            .observe(\.status, options: [.new, .old],
-                     changeHandler: {[weak self] (playerItem, _) in
-                        guard let self = self else { return }
-                        // Switch over the status
-                        switch playerItem.status {
-                        case .readyToPlay:
-                            // Player item is ready to play.
-                            if self._firstReadyToPlay {
-                                self._isLoaded.updateValue(true, forKey: self._videoId)
-                                self._isReadyToPlay = true
-                                isVideoEnded = false
-                                if let item = self.playerItem {
-                                    self._currentTime = CMTimeGetSeconds(item.currentTime())
-                                }
-                                let vId: [String: Any] = ["fromPlayerId": self._videoId, "currentTime": self._currentTime,
-                                                          "videoRate": self._videoRate]
-                                NotificationCenter.default.post(name: .playerItemReady, object: nil, userInfo: vId)
-                                self._firstReadyToPlay = false
-                                
-                                self.setNowPlayingInfo()
-                                self.setRemoteCommandCenter()
-                                self.setNowPlayingImage()
-                            }
-                        case .failed:
-                            Self.logger.debug("failing to load")
-                            self._isLoaded.updateValue(false, forKey: self._videoId)
-                        case .unknown:
-                            // Player item is not yet ready.
-                            Self.logger.debug("playerItem not yet ready")
-
-                        @unknown default:
-                            Self.logger.debug("playerItem Error \(String(describing: self.playerItem?.error))")
-                        }
-
-                     })
-
-        self.itemBufferObserver = self.playerItem?
-            .observe(\.isPlaybackBufferEmpty,
-                     options: [.new, .old], changeHandler: {[weak self] (playerItem, _) in
-                        guard let self = self else { return }
-                        let empty: Bool = ((self.playerItem?.isPlaybackBufferEmpty) != nil)
-                        if empty {
-                            self._isBufferEmpty.updateValue(true, forKey: self._videoId)
-                        } else {
-                            self._isBufferEmpty.updateValue(false, forKey: self._videoId)
-                        }
-                     })
-        self.playerRateObserver = self.player?
-            .observe(\.rate, options: [.new, .old], changeHandler: {[weak self] (player, _) in
-                guard let self = self else { return }
-                let rate: Float = player.rate
-                if let item = self.playerItem {
-                    self._currentTime = CMTimeGetSeconds(item.currentTime())
-                    self._duration = CMTimeGetSeconds(item.duration)
-                }
-                let vId: [String: Any] = [
-                    "fromPlayerId": self._videoId,
-                    "currentTime": self._currentTime,
-                    "videoRate": self._videoRate
-                ]
-
-                if !(self._isLoaded[self._videoId] ?? true) {
-                    Self.logger.debug("AVPlayer Rate for player \(self._videoId): Loading")
-                } else if rate > 0 && self._isReadyToPlay {
-                    if rate != self._videoRate {
-                        player.rate = self._videoRate
-                    }
-
-                    self.isPlaying = true
-                    // Start position updates when playback actually starts
-                    self.startPositionUpdates()
-                    NotificationCenter.default.post(name: .playerItemPlay, object: nil, userInfo: vId)
-                } else if rate == 0 && !isVideoEnded && abs(self._currentTime - self._duration) < 0.2 {
-                    self.isPlaying = false
-                    let fromLoop = self._currentTime
-                    player.seek(to: CMTime.zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
-                        guard let self = self, finished else { return }
-                        DispatchQueue.main.async {
-                            self._currentTime = 0
-                            self.postSeekBridgeEvent(fromSeconds: fromLoop, toSeconds: 0)
-                        }
-                    }
-                    if /*!isInPIPMode && */self._exitOnEnd {
-                        isVideoEnded = true
-                        NotificationCenter.default.post(name: .playerItemEnd, object: nil, userInfo: vId)
-                    } else {
-                        if self._loopOnEnd {
-                            self.play()
-                        }
-                    }
-                } else if rate == 0 {
-                    if !isInPIPMode && !isInBackgroundMode && !isRateZero {
-                        self.isPlaying = false
-                        if !self.videoPlayer.isBeingDismissed {
-                            Self.logger.debug("AVPlayer Rate for player \(self._videoId): Paused")
-                            NotificationCenter.default.post(name: .playerItemPause, object: nil, userInfo: vId)
-                        }
-                    } else {
-                        isRateZero = true
-                    }
-                } else if self._isBufferEmpty[self._videoId] ?? true {
-                    Self.logger.debug("AVPlayer Rate for player \(self._videoId): Buffer Empty Loading")
-                }
-            })
         self.videoPlayerFrameObserver = self.videoPlayer
             .observe(\.view.frame, options: [.new, .old],
                      changeHandler: {[weak self] (_, _) in
@@ -2721,16 +2716,33 @@ open class FullScreenVideoPlayerView: UIView {
     }
     // MARK: - Set-up Public functions
 
+    /// Present completion already configured movie-playback session (Epic 45 handoff).
+    func markPresentAudioSessionActive() {
+        self._skipAudioSessionReconfigurationForNextPlay = true
+    }
+
+    func hasInitialPlaybackStarted() -> Bool {
+        return self._initialPlaybackStarted
+    }
+
+    func isPlayerItemReadyForPlayback() -> Bool {
+        return self._isReadyToPlay || self.playerItem?.status == .readyToPlay
+    }
+
     @objc func play() {
-        // Ensure audio session is properly configured before playing
-        self.configureAudioSession()
-        
+        let reconfigureAudioSession = !self._skipAudioSessionReconfigurationForNextPlay
+        self._skipAudioSessionReconfigurationForNextPlay = false
+        if reconfigureAudioSession {
+            self.configureAudioSession()
+        } else {
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
+
+        self._initialPlaybackStarted = true
         self.isPlaying = true
         self.player?.play()
         self.player?.rate = _videoRate
-        
-        // Start position updates if not already started
-        // Use a small delay to ensure player is ready
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self = self else { return }
             self.startPositionUpdates()
@@ -2779,6 +2791,24 @@ open class FullScreenVideoPlayerView: UIView {
             DispatchQueue.main.async {
                 self._currentTime = time
                 self.postSeekBridgeEvent(fromSeconds: fromSeconds, toSeconds: time)
+            }
+        }
+    }
+
+    /// Seek first, then start at rate — avoids configureAudioSession deactivate wiping HLS seek.
+    @objc func setCurrentTimeThenPlay(time: Double) {
+        self._initialPlaybackStarted = true
+        self._skipAudioSessionReconfigurationForNextPlay = true
+
+        let seekTime = CMTime(seconds: time, preferredTimescale: 600)
+        self.player?.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                if finished {
+                    self._currentTime = time
+                    self.postSeekBridgeEvent(fromSeconds: 0, toSeconds: time)
+                }
+                self.play()
             }
         }
     }

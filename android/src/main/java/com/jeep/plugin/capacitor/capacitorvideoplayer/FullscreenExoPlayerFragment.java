@@ -720,6 +720,13 @@ public class FullscreenExoPlayerFragment extends Fragment {
         Log.v(TAG, "PIP break 3");
       }
       isInPictureInPictureMode = getActivity().isInPictureInPictureMode();
+      CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+      if (plugin != null) {
+        JSObject pipData = new JSObject();
+        pipData.put("fromPlayerId", playerId != null ? playerId : "fullscreen");
+        pipData.put("currentTime", getCurrentTime());
+        plugin.notifyJeepCapVideoPlayerPipStart(pipData);
+      }
       if (sturi != null) {
         setSubtitle(true);
       }
@@ -762,6 +769,17 @@ public class FullscreenExoPlayerFragment extends Fragment {
     plugin.notifyJeepCapVideoPlayerBackground(data);
   }
 
+  private void notifyPictureInPictureStopIfNeeded() {
+    CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+    if (plugin == null) {
+      return;
+    }
+    JSObject data = new JSObject();
+    data.put("fromPlayerId", playerId != null ? playerId : "fullscreen");
+    data.put("currentTime", getCurrentTime());
+    plugin.notifyJeepCapVideoPlayerPipStop(data);
+  }
+
   /**
    * Perform onStart Action
    */
@@ -796,6 +814,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     super.onStop();
     notifyAppBackgroundWhilePlayingIfNeeded();
     if (isInPictureInPictureMode) {
+      notifyPictureInPictureStopIfNeeded();
       linearLayout.setVisibility(View.VISIBLE);
       playerExit();
       // Story 45.x: do NOT call finishAndRemoveTask() here — it kills the entire Capacitor
@@ -892,6 +911,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         initializePlayer();
       }
     } else {
+      notifyPictureInPictureStopIfNeeded();
       isInPictureInPictureMode = false;
       if (
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)

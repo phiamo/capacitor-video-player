@@ -70,6 +70,34 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var vpInternalObserver: Any?
     var isPlayerDismissed: Bool = false
     let rateList: [Float] = [0.25, 0.5, 0.75, 1.0, 2.0, 4.0]
+    /// One-shot start position (seconds) from `initPlayer` `seektime` — applied before first play.
+    var initialSeekSeconds: Double = 0
+    /// `AVPlayerViewController` present animation finished and audio session is active.
+    var isFullscreenPresentCompleted: Bool = false
+    /// `playerItemReady` fired; initial play/seek waits until present completes (v8.2.11+).
+    var isPlayerItemReadyForInitialPlayback: Bool = false
+    /// Prevents duplicate seek-then-play when present completion and ready race.
+    var initialFullscreenPlaybackStarted: Bool = false
+
+    /// Capacitor may bridge JS numbers as `NSNumber`; accept common numeric types.
+    static func parseSeekTimeSeconds(from value: Any?) -> Double? {
+        if let number = value as? NSNumber {
+            return number.doubleValue
+        }
+        if let seek = value as? Double {
+            return seek
+        }
+        if let seek = value as? Int {
+            return Double(seek)
+        }
+        if let seek = value as? Float {
+            return Double(seek)
+        }
+        if let seek = value as? String, let parsed = Double(seek) {
+            return parsed
+        }
+        return nil
+    }
     /// Persisted per `playerId` when `jeepCapVideoPlayerPositionUpdate` fires (Epic 45 / PR-2 fallback).
     static let lastKnownPositionKeyPrefix = "CapacitorVideoPlayer.lastKnownPosition."
 
@@ -199,6 +227,14 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             positionUpdateInterval = sPositionUpdateInterval > 0 ? sPositionUpdateInterval : 5.0
         } else if let sPositionUpdateInterval = call.options["positionUpdateInterval"] as? Int {
             positionUpdateInterval = Double(sPositionUpdateInterval > 0 ? sPositionUpdateInterval : 5)
+        }
+        let seekSeconds = call.getDouble("seektime")
+            ?? Self.parseSeekTimeSeconds(from: call.options["seektime"])
+        if let seek = seekSeconds, seek > 0 {
+            self.initialSeekSeconds = seek
+            print("[CapacitorVideoPlayer] initPlayer initialSeekSeconds=\(seek)")
+        } else {
+            self.initialSeekSeconds = 0
         }
         self.fsPlayerId = playerId
         self.mode = mode
@@ -540,7 +576,8 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve([ "result": false, "method": "setCurrentTime", "message": error])
             return
         }
-        guard let seekTime = call.options["seektime"] as? Double else {
+        guard let seekTime = call.getDouble("seektime")
+            ?? Self.parseSeekTimeSeconds(from: call.options["seektime"]) else {
             let error: String = "Must provide a time in second"
             Self.logger.error("\(error, privacy: .public)")
             call.resolve([ "result": false, "method": "setCurrentTime", "message": error])

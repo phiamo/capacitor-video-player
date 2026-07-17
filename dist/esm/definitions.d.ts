@@ -8,6 +8,13 @@ export interface capVideoPlayerBackgroundData {
     /** Playback position in seconds at the moment of backgrounding */
     currentTime: number;
 }
+/**
+ * Payload for jeepCapVideoPlayerPipStart / jeepCapVideoPlayerPipStop (iOS/Android PiP lifecycle).
+ */
+export interface capVideoPlayerPipListener {
+    fromPlayerId?: string;
+    currentTime?: number;
+}
 export interface CapacitorVideoPlayerPlugin {
     /**
      * Echo
@@ -130,6 +137,8 @@ export interface CapacitorVideoPlayerPlugin {
      */
     getSelectedSubtitleTrack(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
     addListener(eventName: 'jeepCapVideoPlayerBackground', listenerFunc: (data: capVideoPlayerBackgroundData) => void): Promise<PluginListenerHandle>;
+    addListener(eventName: 'jeepCapVideoPlayerPipStart', listenerFunc: (data: capVideoPlayerPipListener) => void): Promise<PluginListenerHandle>;
+    addListener(eventName: 'jeepCapVideoPlayerPipStop', listenerFunc: (data: capVideoPlayerPipListener) => void): Promise<PluginListenerHandle>;
 }
 export interface capEchoOptions {
     /**
@@ -265,6 +274,11 @@ export interface capVideoPlayerOptions {
      * default: 5
      */
     positionUpdateInterval?: number;
+    /**
+     * Initial seek position in seconds applied before first play (iOS/Android).
+     * Prefer this over seeking after jeepCapVideoPlayerPlay to avoid races.
+     */
+    seektime?: number;
 }
 export interface capVideoPlayerIdOptions {
     /**

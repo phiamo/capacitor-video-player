@@ -16,6 +16,36 @@ extension CapacitorVideoPlayerPlugin {
     /// Duration to suppress spurious KVO dismiss while AVPlayerViewController is presenting (matches app grace).
     private static let nativeFullscreenOpenHoldSeconds: TimeInterval = 2.0
 
+    // MARK: - initial playback (present + ready gate)
+
+    func resetInitialFullscreenPlaybackState() {
+        self.isFullscreenPresentCompleted = false
+        self.isPlayerItemReadyForInitialPlayback = false
+        self.initialFullscreenPlaybackStarted = false
+    }
+
+    /// Starts first play once item is ready and present completion ran.
+    func startFullscreenPlaybackIfNeeded() {
+        guard self.mode == "fullscreen" else { return }
+        guard self.isFullscreenPresentCompleted else { return }
+        guard !self.initialFullscreenPlaybackStarted else { return }
+        guard let vPFSV = self.videoPlayerFullScreenView else { return }
+
+        let itemReady = self.isPlayerItemReadyForInitialPlayback || vPFSV.isPlayerItemReadyForPlayback()
+        guard itemReady else { return }
+
+        self.initialFullscreenPlaybackStarted = true
+        self.isPlayerItemReadyForInitialPlayback = false
+        vPFSV.markPresentAudioSessionActive()
+        let startAt = self.initialSeekSeconds
+        if startAt > 0 {
+            vPFSV.setCurrentTimeThenPlay(time: startAt)
+            self.initialSeekSeconds = 0
+        } else {
+            vPFSV.play()
+        }
+    }
+
     // MARK: - topmostViewController
 
     /// Walks the bridge hierarchy to find the VC that should receive `present()`.
@@ -38,6 +68,7 @@ extension CapacitorVideoPlayerPlugin {
 
     /// Clears retained fullscreen state and dismisses a stuck modal before a new `initPlayer` presentation.
     func clearStaleFullscreenPresentation(completion: @escaping () -> Void) {
+        self.resetInitialFullscreenPlaybackState()
         if let vPFSV = self.videoPlayerFullScreenView {
             Self.logger.debug("Clearing stale fullscreen view before new presentation")
             vPFSV.pause()
@@ -66,6 +97,24 @@ extension CapacitorVideoPlayerPlugin {
     }
 
     // MARK: - createVideoPlayerFullScreenView
+
+    /// Activates movie-playback audio session after AVPlayerViewController is presented.
+    /// Required for both legacy background mode and Epic 45 handoff (`backModeEnabled=false`).
+    private func activateFullscreenAudioSessionAfterPresent() -> String? {
+        self.audioSession = AVAudioSession.sharedInstance()
+        do {
+            try self.audioSession?
+                .setCategory(.playback,
+                             mode: .moviePlayback,
+                             options: [])
+            try self.audioSession?.setActive(true)
+            return nil
+        } catch let error as NSError {
+            Self.logger.error(
+                "Unable to activate audio session: \(error.localizedDescription, privacy: .public)")
+            return error.localizedDescription
+        }
+    }
 
     // swiftlint:disable function_body_length
     // swiftlint:disable function_parameter_count
@@ -114,6 +163,8 @@ extension CapacitorVideoPlayerPlugin {
                     return
                 }
 
+                self.resetInitialFullscreenPlaybackState()
+
                 let fullscreenView = self.implementation.createFullscreenPlayer(
                     playerId: playerId, videoUrl: videoUrl,
                     rate: rate, exitOnEnd: exitOnEnd, loopOnEnd: loopOnEnd,
@@ -153,29 +204,24 @@ extension CapacitorVideoPlayerPlugin {
                         deadline: .now() + Self.nativeFullscreenOpenHoldSeconds) {
                         isOpeningNativeFullscreen = false
                     }
-                    if backModeEnabled {
-                        self.audioSession = AVAudioSession.sharedInstance()
-                        do {
-                            try self.audioSession?
-                                .setCategory(.playback,
-                                             mode: .moviePlayback,
-                                             options: [])
-                            try self.audioSession?.setActive(true)
-                            call.resolve([
-                                "result": true,
-                                "method": "createVideoPlayerFullScreenView",
-                                "value": true
-                            ])
-                        } catch let error as NSError {
-                            Self.logger.error(
-                                "Unable to activate audio session: \(error.localizedDescription, privacy: .public)")
-                            call.resolve([
-                                "result": false,
-                                "method": "createVideoPlayerFullScreenView",
-                                "message": error.localizedDescription
-                            ])
-                        }
+                    if let errorMessage = self.activateFullscreenAudioSessionAfterPresent() {
+                        call.resolve([
+                            "result": false,
+                            "method": "createVideoPlayerFullScreenView",
+                            "message": errorMessage
+                        ])
                     } else {
+                        self.videoPlayerFullScreenView?.markPresentAudioSessionActive()
+                        self.isFullscreenPresentCompleted = true
+                        self.startFullscreenPlaybackIfNeeded()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                            guard let self = self else { return }
+                            if (self.videoPlayerFullScreenView?.player?.rate ?? 0) == 0 {
+                                self.initialFullscreenPlaybackStarted = false
+                                self.videoPlayerFullScreenView?.markPresentAudioSessionActive()
+                                self.startFullscreenPlaybackIfNeeded()
+                            }
+                        }
                         call.resolve([
                             "result": true,
                             "method": "createVideoPlayerFullScreenView",

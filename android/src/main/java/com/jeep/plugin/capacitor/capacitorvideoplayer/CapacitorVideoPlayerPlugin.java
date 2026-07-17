@@ -126,6 +126,14 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
       notifyListeners("jeepCapVideoPlayerBackground", data);
   }
 
+  public void notifyJeepCapVideoPlayerPipStart(JSObject data) {
+      notifyListeners("jeepCapVideoPlayerPipStart", data);
+  }
+
+  public void notifyJeepCapVideoPlayerPipStop(JSObject data) {
+      notifyListeners("jeepCapVideoPlayerPipStop", data);
+  }
+
   private void persistLastKnownVideoPosition(String playerId, double seconds) {
     if (this.context == null || playerId == null) {
       return;
