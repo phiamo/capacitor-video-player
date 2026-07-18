@@ -1,5 +1,10 @@
 # Changelog
 
+## [8.2.14] - 2026-07-17
+
+### Fixed
+- **Android:** Register `OnBackPressedCallback` in fullscreen video fragment so Predictive Back (gesture swipe and 3-button back on targetSdk 36) exits fullscreen / enters PiP again. Legacy `View.OnKeyListener` alone no longer receives `KEYCODE_BACK` on modern Android.
+
 ## [8.2.13] - 2026-07-17
 
 ### Fixed

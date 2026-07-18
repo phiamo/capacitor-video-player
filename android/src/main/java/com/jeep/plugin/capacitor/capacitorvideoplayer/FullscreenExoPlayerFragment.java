@@ -37,6 +37,9 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -584,6 +587,27 @@ public class FullscreenExoPlayerFragment extends Fragment {
       Toast.makeText(context, "Video path wrong or type not supported", Toast.LENGTH_SHORT).show();
     }
     return view;
+  }
+
+  /**
+   * Predictive Back (targetSdk 33+): gesture swipe and 3-button back both route through
+   * OnBackPressedDispatcher and no longer deliver KeyEvent.KEYCODE_BACK to View.OnKeyListener.
+   * Scoped to the view lifecycle so the callback is removed when fullscreen closes.
+   */
+  @Override
+  public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+    super.onViewCreated(view, savedInstanceState);
+    requireActivity()
+      .getOnBackPressedDispatcher()
+      .addCallback(
+        getViewLifecycleOwner(),
+        new OnBackPressedCallback(true) {
+          @Override
+          public void handleOnBackPressed() {
+            backPressed();
+          }
+        }
+      );
   }
 
   /**
