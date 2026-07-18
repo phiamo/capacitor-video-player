@@ -694,14 +694,18 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   public void playerExit() {
+    // Capture head before teardown. Do not seekTo(0) — that races position ticks and can
+    // poison Epic 45 video→audio handoff with position 0 / stale open position.
+    final double exitTimeSec = player != null ? (player.getCurrentPosition() == UNKNOWN_TIME
+      ? 0.0
+      : player.getCurrentPosition() / 1000.0) : 0.0;
     Map<String, Object> info = new HashMap<String, Object>() {
       {
         put("dismiss", "1");
-        put("currentTime", getCurrentTime());
+        put("currentTime", exitTimeSec);
       }
     };
     if (player != null) {
-      player.seekTo(0);
       player.setVolume(curVolume);
     }
     releasePlayer();

@@ -1248,6 +1248,15 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         } else if (durationObj != null) {
                             data.put("duration", durationObj);
                         }
+                        Object pidObj = this.getInfo().get("fromPlayerId");
+                        String pid = pidObj instanceof String ? (String) pidObj : null;
+                        double toSec = 0;
+                        if (toObj instanceof String) {
+                          toSec = Double.parseDouble((String) toObj);
+                        } else if (toObj instanceof Number) {
+                          toSec = ((Number) toObj).doubleValue();
+                        }
+                        persistLastKnownVideoPosition(pid, toSec);
                         notifyListeners("jeepCapVideoPlayerSeek", data);
                         return;
                     }
@@ -1314,7 +1323,15 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         final JSObject data = new JSObject();
                         if (Integer.valueOf((String) this.getInfo().get("dismiss")) == 1) ret = true;
                         data.put("dismiss", ret);
-                        data.put("currentTime", this.getInfo().get("currentTime"));
+                        Object exitTimeObj = this.getInfo().get("currentTime");
+                        double exitSec = 0;
+                        if (exitTimeObj instanceof String) {
+                            exitSec = Double.parseDouble((String) exitTimeObj);
+                        } else if (exitTimeObj instanceof Number) {
+                            exitSec = ((Number) exitTimeObj).doubleValue();
+                        }
+                        data.put("currentTime", exitSec);
+                        persistLastKnownVideoPosition(fsPlayerId, exitSec);
                         bridge
                             .getActivity()
                             .runOnUiThread(

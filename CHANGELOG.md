@@ -1,5 +1,11 @@
 # Changelog
 
+## [8.2.15] - 2026-07-18
+
+### Fixed
+- **Android:** On fullscreen exit, capture live ExoPlayer time and stop `seekTo(0)` before release so Epic 45 video→audio handoff is not poisoned by position 0 / a stale open position.
+- **Android/iOS:** Persist last-known position on seek-completed and on exit; exit `currentTime` is a double so JS handoff can prefer the true video head when WebView missed ticks.
+
 ## [8.2.14] - 2026-07-17
 
 ### Fixed

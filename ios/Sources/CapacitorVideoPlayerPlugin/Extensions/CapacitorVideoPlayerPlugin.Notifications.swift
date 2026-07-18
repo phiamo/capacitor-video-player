@@ -90,6 +90,19 @@ extension CapacitorVideoPlayerPlugin {
 
     @objc func playerItemSeekCompleted(notification: Notification) {
         guard let info = notification.userInfo as? [String: Any] else { return }
+        if let playerId = info["fromPlayerId"] as? String {
+            let tp = info["toPosition"]
+            var seconds: Double = 0
+            if let d = tp as? Double {
+                seconds = d
+            } else if let f = tp as? Float {
+                seconds = Double(f)
+            } else if let i = tp as? Int {
+                seconds = Double(i)
+            }
+            let key = CapacitorVideoPlayerPlugin.lastKnownPositionKeyPrefix + playerId
+            UserDefaults.standard.set(seconds, forKey: key)
+        }
         DispatchQueue.main.async {
             self.notifyListeners("jeepCapVideoPlayerSeek", data: info, retainUntilConsumed: true)
         }
@@ -141,9 +154,17 @@ extension CapacitorVideoPlayerPlugin {
             return
         }
 
+        // Prefer live head, then last persisted tick/seek (survives WebView suspend / teardown races).
         var currentTime: Double = 0.0
         if let playerView = self.videoPlayerFullScreenView {
             currentTime = playerView.getRealCurrentTime()
+        }
+        let key = CapacitorVideoPlayerPlugin.lastKnownPositionKeyPrefix + self.fsPlayerId
+        let stored = UserDefaults.standard.double(forKey: key)
+        if currentTime <= 0, stored > 0 {
+            currentTime = stored
+        } else if currentTime > 0 {
+            UserDefaults.standard.set(currentTime, forKey: key)
         }
         let info: [String: Any] = ["dismiss": true, "currentTime": currentTime]
         DispatchQueue.main.async {
