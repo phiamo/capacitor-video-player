@@ -377,7 +377,8 @@ export interface capExitListener {
    * Whether the native player was playing immediately before dismiss (Epic 45 handoff).
    * iOS often emits pause before exit when the user taps Done/X — JS should prefer this over a stale pause flag.
    */
-  wasPlaying?: boolean;
+  /** May arrive as boolean, 0/1, or 'true'/'false' depending on native bridge. */
+  wasPlaying?: boolean | number | string;
 }
 export interface capPositionUpdateListener {
   /**

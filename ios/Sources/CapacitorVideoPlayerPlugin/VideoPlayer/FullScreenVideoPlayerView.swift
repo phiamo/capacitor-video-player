@@ -2491,31 +2491,11 @@ open class FullScreenVideoPlayerView: UIView {
     }
     
     private func cleanupAudioSession() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            
-            // Pause the player first to prevent HAL errors
-            self.player?.pause()
-            
-            // Wait a moment for audio to stop
-            Thread.sleep(forTimeInterval: 0.1)
-            
-            // Deactivate the session with proper options to notify other audio sessions
-            // DO NOT reset category - let the audio player reactivate with its own category
-            try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-            
-            Self.logger.notice(" Audio session deactivated (category preserved for audio player)")
-        } catch {
-            Self.logger.error(" Failed to deactivate audio session: \(error)")
-            // Force deactivation as fallback
-            do {
-                let audioSession = AVAudioSession.sharedInstance()
-                try audioSession.setActive(false)
-                Self.logger.notice(" Audio session force deactivated")
-            } catch {
-                Self.logger.error(" Failed to force deactivate audio session: \(error)")
-            }
-        }
+        // Pause video only — do not setActive(false). Deactivating the shared session
+        // races with playlist resumeAfterVideoHandoff and can silence seamless audio continue.
+        // Playlist reactivates AVAudioSession on handoff; category stays as configured.
+        self.player?.pause()
+        Self.logger.notice(" Video paused for handoff (audio session left active for playlist)")
     }
     
     // MARK: - Auto-play for HLS streams

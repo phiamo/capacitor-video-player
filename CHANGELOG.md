@@ -1,5 +1,10 @@
 # Changelog
 
+## [8.2.19] - 2026-07-19
+
+### Fixed
+- **iOS:** Do not `setActive(false)` on video cleanup (races playlist handoff and silences seamless audio continue). Emit `jeepCapVideoPlayerExit` before fullscreen teardown so JS can re-arm audio first.
+
 ## [8.2.18] - 2026-07-19
 
 ### Fixed

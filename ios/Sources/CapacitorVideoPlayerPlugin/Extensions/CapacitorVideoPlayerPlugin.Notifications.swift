@@ -183,14 +183,15 @@ extension CapacitorVideoPlayerPlugin {
             "wasPlaying": wasPlaying,
         ]
         DispatchQueue.main.async {
+            // Notify JS before teardown so endVideoSession can re-arm playlist audio
+            // before dismiss/cleanup races the shared AVAudioSession.
+            self.notifyListeners("jeepCapVideoPlayerExit", data: info, retainUntilConsumed: true)
             if self.mode == "fullscreen" {
                 if let vPFSV = self.videoPlayerFullScreenView {
                     vPFSV.pause()
                 }
                 self.playerFullscreenExit()
             }
-            self.notifyListeners("jeepCapVideoPlayerExit", data: info, retainUntilConsumed: true)
-            return
         }
     }
 
