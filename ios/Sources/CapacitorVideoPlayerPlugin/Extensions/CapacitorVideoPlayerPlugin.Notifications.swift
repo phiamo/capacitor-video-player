@@ -156,9 +156,20 @@ extension CapacitorVideoPlayerPlugin {
 
         // Prefer live head, then last persisted tick/seek (survives WebView suspend / teardown races).
         var currentTime: Double = 0.0
+        var wasPlaying = false
+        if let fromNote = notification.userInfo?["wasPlaying"] as? Bool {
+            wasPlaying = fromNote
+        } else if let fromNum = notification.userInfo?["wasPlaying"] as? NSNumber {
+            wasPlaying = fromNum.boolValue
+        }
         if let playerView = self.videoPlayerFullScreenView {
             currentTime = playerView.getRealCurrentTime()
+            if !wasPlaying {
+                wasPlaying = playerView.wasPlayingForDismiss()
+            }
         }
+        NSLog("[CapacitorVideoPlayer] playerFullscreenDismiss wasPlaying=%@ currentTime=%.3f",
+              wasPlaying ? "true" : "false", currentTime)
         let key = CapacitorVideoPlayerPlugin.lastKnownPositionKeyPrefix + self.fsPlayerId
         let stored = UserDefaults.standard.double(forKey: key)
         if currentTime <= 0, stored > 0 {
@@ -166,7 +177,11 @@ extension CapacitorVideoPlayerPlugin {
         } else if currentTime > 0 {
             UserDefaults.standard.set(currentTime, forKey: key)
         }
-        let info: [String: Any] = ["dismiss": true, "currentTime": currentTime]
+        let info: [String: Any] = [
+            "dismiss": true,
+            "currentTime": currentTime,
+            "wasPlaying": wasPlaying,
+        ]
         DispatchQueue.main.async {
             if self.mode == "fullscreen" {
                 if let vPFSV = self.videoPlayerFullScreenView {

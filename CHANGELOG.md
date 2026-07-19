@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.2.18] - 2026-07-19
+
+### Fixed
+- **iOS:** `wasPlayingForDismiss()` also uses a timestamp grace window (survives immediate sticky clear / pause-before-dismiss races on device). Mark play intent on any `rate > 0` (not only when ready). Explicit `pause()` defers sticky clear like rate-KVO.
+
+## [8.2.17] - 2026-07-19
+
+### Fixed
+- **iOS:** Sticky `playbackDesired` + deferred clear / `wasPlayingForDismiss()` so Done/X exit reports `wasPlaying=true` even when AVKit zeros `rate` before `willEndFullScreenPresentation` (fixes silent audio after X while video was playing; intentional pause then X still stays paused).
+
+## [8.2.16] - 2026-07-18
+
+### Fixed
+- **iOS:** `jeepCapVideoPlayerExit` includes `wasPlaying` captured before AVKit pauses on Done/X, so Epic 45 can resume audio even when a pause event clears JS play state first.
+
 ## [8.2.15] - 2026-07-18
 
 ### Fixed

@@ -88,7 +88,14 @@ extension CapacitorVideoPlayerPlugin: AVPlayerViewControllerDelegate {
         if isOpeningNativeFullscreen || isVideoEnded || self.isPlayerDismissed || isInPIPMode {
             return
         }
-        print("[CapacitorVideoPlayer] willEndFullScreenPresentation — user closed native fullscreen")
-        NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
+        // AVKit often zeros rate before this callback; use sticky recent-play state.
+        let wasPlaying = videoPlayerFullScreenView?.wasPlayingForDismiss()
+            ?? ((playerViewController.player?.rate ?? 0) > 0)
+        NSLog("[CapacitorVideoPlayer] willEndFullScreenPresentation wasPlaying=%@", wasPlaying ? "true" : "false")
+        NotificationCenter.default.post(
+            name: .playerFullscreenDismiss,
+            object: nil,
+            userInfo: ["wasPlaying": wasPlaying]
+        )
     }
 }

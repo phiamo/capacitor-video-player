@@ -345,6 +345,11 @@ export interface capExitListener {
      * Video current time when listener trigerred
      */
     currentTime?: number;
+    /**
+     * Whether the native player was playing immediately before dismiss (Epic 45 handoff).
+     * iOS often emits pause before exit when the user taps Done/X — JS should prefer this over a stale pause flag.
+     */
+    wasPlaying?: boolean;
 }
 export interface capPositionUpdateListener {
     /**

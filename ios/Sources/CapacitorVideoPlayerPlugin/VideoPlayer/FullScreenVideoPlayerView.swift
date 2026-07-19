@@ -118,6 +118,13 @@ open class FullScreenVideoPlayerView: UIView {
     var videoAsset: AVURLAsset
     var playerItem: AVPlayerItem?
     var isPlaying: Bool
+    /// Sticky play intent for Done/X handoff. AVKit zeros `rate` before dismiss; clear is deferred
+    /// so intentional pause (then X after a few seconds) does not resume audio.
+    private var playbackDesired = false
+    private var playbackDesiredClearWorkItem: DispatchWorkItem?
+    /// Last time we observed play intent (rate>0 or explicit play). Survives immediate `clearPlaybackDesired()`.
+    private var lastPlaybackDesiredAt: CFAbsoluteTime = 0
+    private static let playbackDesiredGraceSeconds: CFAbsoluteTime = 2.5
     var itemBufferObserver: NSKeyValueObservation?
     var itemStatusObserver: NSKeyValueObservation?
     var playerRateObserver: NSKeyValueObservation?
@@ -2360,14 +2367,18 @@ open class FullScreenVideoPlayerView: UIView {
 
                 if !(self._isLoaded[self._videoId] ?? true) {
                     Self.logger.debug("AVPlayer Rate for player \(self._videoId): Loading")
-                } else if rate > 0 && self._isReadyToPlay {
-                    if rate != self._videoRate {
-                        player.rate = self._videoRate
-                    }
+                } else if rate > 0 {
+                    // Mark play intent even before `_isReadyToPlay` — Done/X can race readiness on device.
+                    self.markPlaybackDesired()
+                    if self._isReadyToPlay {
+                        if rate != self._videoRate {
+                            player.rate = self._videoRate
+                        }
 
-                    self.isPlaying = true
-                    self.startPositionUpdates()
-                    NotificationCenter.default.post(name: .playerItemPlay, object: nil, userInfo: vId)
+                        self.isPlaying = true
+                        self.startPositionUpdates()
+                        NotificationCenter.default.post(name: .playerItemPlay, object: nil, userInfo: vId)
+                    }
                 } else if rate == 0 && !isVideoEnded && abs(self._currentTime - self._duration) < 0.2 {
                     self.isPlaying = false
                     let fromLoop = self._currentTime
@@ -2387,6 +2398,8 @@ open class FullScreenVideoPlayerView: UIView {
                 } else if rate == 0 {
                     if !isInPIPMode && !isInBackgroundMode && !isRateZero {
                         self.isPlaying = false
+                        // Defer clearing play intent — Done/X pauses before willEndFullScreenPresentation.
+                        self.schedulePlaybackDesiredClear()
                         if !self.videoPlayer.isBeingDismissed {
                             Self.logger.debug("AVPlayer Rate for player \(self._videoId): Paused")
                             NotificationCenter.default.post(name: .playerItemPause, object: nil, userInfo: vId)
@@ -2740,6 +2753,7 @@ open class FullScreenVideoPlayerView: UIView {
 
         self._initialPlaybackStarted = true
         self.isPlaying = true
+        self.markPlaybackDesired()
         self.player?.play()
         self.player?.rate = _videoRate
 
@@ -2750,12 +2764,46 @@ open class FullScreenVideoPlayerView: UIView {
     }
     @objc func pause() {
         self.isPlaying = false
+        // Defer clear — AVKit / remote-command pause can run before willEndFullScreenPresentation.
+        self.schedulePlaybackDesiredClear()
         self.player?.pause()
         
         // Stop position updates when paused
         self.stopPositionUpdates()
         
         Self.logger.debug("⏸️ Video playback paused")
+    }
+
+    /// True if playing, or play intent still within grace after AVKit's dismiss pause.
+    func wasPlayingForDismiss(graceSeconds: CFAbsoluteTime = FullScreenVideoPlayerView.playbackDesiredGraceSeconds) -> Bool {
+        if (player?.rate ?? 0) > 0 || playbackDesired {
+            return true
+        }
+        guard lastPlaybackDesiredAt > 0 else { return false }
+        return CFAbsoluteTimeGetCurrent() - lastPlaybackDesiredAt < graceSeconds
+    }
+
+    private func markPlaybackDesired() {
+        playbackDesiredClearWorkItem?.cancel()
+        playbackDesiredClearWorkItem = nil
+        playbackDesired = true
+        lastPlaybackDesiredAt = CFAbsoluteTimeGetCurrent()
+    }
+
+    private func clearPlaybackDesired() {
+        playbackDesiredClearWorkItem?.cancel()
+        playbackDesiredClearWorkItem = nil
+        playbackDesired = false
+    }
+
+    private func schedulePlaybackDesiredClear(afterSeconds: TimeInterval = FullScreenVideoPlayerView.playbackDesiredGraceSeconds) {
+        playbackDesiredClearWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.playbackDesired = false
+            self?.playbackDesiredClearWorkItem = nil
+        }
+        playbackDesiredClearWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + afterSeconds, execute: work)
     }
     @objc func didFinishPlaying() -> Bool {
         return isVideoEnded
