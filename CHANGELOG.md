@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.2.20] - 2026-09-14
+
+### Fixed
+- **Android:** Use `proguard-android-optimize.txt` for release builds (parity with capacitor-plugin-playlist).
+
+### Changed
+- Stop tracking accidental `android/build/` Gradle output; add to `.gitignore`.
+
 ## [8.2.19] - 2026-07-19
 
 ### Fixed
