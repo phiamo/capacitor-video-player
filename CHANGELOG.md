@@ -1,5 +1,16 @@
 # Changelog
 
+## [8.3.0] - 2026-09-19
+
+### Changed
+- **Android:** Migrate native video playback from ExoPlayer 2.19 to **androidx.media3** 1.11.1 (HLS, DASH, SmoothStreaming, progressive). Capacitor JS API and event payloads are unchanged.
+- **Android:** Sidecar subtitles attach as `MediaItem.SubtitleConfiguration` on the shared `VideoMediaItemFactory` item (Story 55.2).
+- **Android:** Picture-in-picture, lock-screen `MediaSession`, and Chromecast run on Media3 (`MediaSession.Builder`, `CastPlayer`). PiP exit no longer calls `finishAndRemoveTask()` (preserves Capacitor activity for audio handoff).
+
+### Notes for host apps
+- Set `com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME` to `androidx.media3.cast.DefaultCastOptionsProvider` in `AndroidManifest.xml` (replaces `com.google.android.exoplayer2.ext.cast.DefaultCastOptionsProvider`).
+- Pin the same `media3Version` across all `androidx.media3` artifacts in the host app Gradle (see Epic 55 app pin in Story 55.7).
+
 ## [8.2.20] - 2026-09-14
 
 ### Fixed
