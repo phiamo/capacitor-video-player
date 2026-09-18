@@ -882,7 +882,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
   @Override
   public void onDestroy() {
     super.onDestroy();
-    if (chromecast) mRouter.removeCallback(mCallback);
+    if (chromecast && mRouter != null) {
+      mRouter.removeCallback(mCallback);
+    }
     releasePlayer();
   }
 
@@ -892,7 +894,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
   @Override
   public void onPause() {
     super.onPause();
-    if (chromecast) castContext.removeCastStateListener(castStateListener);
+    if (chromecast && castContext != null) {
+      castContext.removeCastStateListener(castStateListener);
+    }
     boolean isAppBackground = false;
     if (bkModeEnabled) isAppBackground = isApplicationSentToBackground(context);
 
@@ -937,7 +941,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
       player = null;
       showSystemUI();
       resetVariables();
-      if (chromecast) {
+      if (chromecast && castPlayer != null) {
         castPlayer.release();
         castPlayer = null;
       }
@@ -1683,13 +1687,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @return void
    */
   private void initializeCastService() {
-    Executor executor = Executors.newSingleThreadExecutor();
-    Task<CastContext> task = CastContext.getSharedInstance(context, executor);
+    try {
+      Executor executor = Executors.newSingleThreadExecutor();
+      Task<CastContext> task = CastContext.getSharedInstance(context, executor);
 
-    task.addOnCompleteListener(new OnCompleteListener<CastContext>() {
-      @Override
-      public void onComplete(Task<CastContext> task) {
-        if (task.isSuccessful()) {
+      task.addOnCompleteListener(new OnCompleteListener<CastContext>() {
+        @Override
+        public void onComplete(Task<CastContext> task) {
+          if (task.isSuccessful()) {
           castContext = task.getResult();
           castPlayer = new CastPlayer(castContext);
           mRouter = MediaRouter.getInstance(context);
@@ -1813,12 +1818,23 @@ public class FullscreenExoPlayerFragment extends Fragment {
           castContext.addCastStateListener(castStateListener);
           mRouter.addCallback(mSelector, mCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
 
-        } else {
-          Exception e = task.getException();
-          e.printStackTrace();
+          } else {
+            Log.w(TAG, "Cast unavailable, disabling chromecast", task.getException());
+            disableChromecastUi();
+          }
         }
-      }
-    });
+      });
+    } catch (Exception e) {
+      Log.w(TAG, "Cast init failed, disabling chromecast", e);
+      disableChromecastUi();
+    }
+  }
+
+  private void disableChromecastUi() {
+    chromecast = false;
+    if (mediaRouteButton != null) {
+      mediaRouteButton.setVisibility(View.GONE);
+    }
   }
 
   private final class EmptyCallback extends MediaRouter.Callback {}
