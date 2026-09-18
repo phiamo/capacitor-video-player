@@ -66,13 +66,9 @@ import androidx.media3.common.Tracks;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.cast.CastPlayer;
 import androidx.media3.cast.SessionAvailabilityListener;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
-import androidx.media3.exoplayer.source.MergingMediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
-import androidx.media3.exoplayer.source.SingleSampleMediaSource;
-import androidx.media3.exoplayer.dash.DashMediaSource;
-import androidx.media3.exoplayer.hls.HlsMediaSource;
-import androidx.media3.exoplayer.smoothstreaming.SsMediaSource;
 import androidx.media3.exoplayer.trackselection.AdaptiveTrackSelection;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import androidx.media3.exoplayer.trackselection.ExoTrackSelection;
@@ -108,7 +104,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -1133,12 +1128,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   private MediaSource buildAssetMediaSource(Uri uri) {
-    MediaSource mediaSource = null;
     DataSource.Factory dataSourceFactory = createDefaultDataSourceFactory();
-    mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(VideoMediaItemFactory.fromUri(uri));
-    // Get the subtitles if any (handles both single and multiple tracks)
-    mediaSource = buildMediaSourceWithSubtitles(mediaSource, dataSourceFactory);
-    return mediaSource;
+    return new DefaultMediaSourceFactory(dataSourceFactory)
+      .createMediaSource(VideoMediaItemFactory.fromUri(uri, sidecarSubtitleTracks()));
   }
 
   /**
@@ -1154,8 +1146,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @return MediaSource
    */
   private MediaSource buildHttpMediaSource() {
-    MediaSource mediaSource = null;
-
     DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
     httpDataSourceFactory.setUserAgent("jeep-exoplayer-plugin");
     httpDataSourceFactory.setConnectTimeoutMs(DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS);
@@ -1177,28 +1167,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
     DataSource.Factory dataSourceFactory = new androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory);
-
-    if (
-      vType.equals("mp4") ||
-        vType.equals("webm") ||
-        vType.equals("ogv") ||
-        vType.equals("3gp") ||
-        vType.equals("flv") ||
-        vType.equals("")
-    ) {
-      mediaSource = new ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(VideoMediaItemFactory.fromUriAndType(uri, vType));
-    } else if (vType.equals("dash") || vType.equals("mpd")) {
-      /* adaptive streaming Dash stream */
-      DashMediaSource.Factory mediaSourceFactory = new DashMediaSource.Factory(dataSourceFactory);
-      mediaSource = mediaSourceFactory.createMediaSource(VideoMediaItemFactory.fromUriAndType(uri, vType));
-    } else if (vType.equals("m3u8")) {
-      mediaSource = new HlsMediaSource.Factory(dataSourceFactory).createMediaSource(VideoMediaItemFactory.fromUriAndType(uri, vType));
-    } else if (vType.equals("ism")) {
-      mediaSource = new SsMediaSource.Factory(dataSourceFactory).createMediaSource(VideoMediaItemFactory.fromUriAndType(uri, vType));
-    }
-    // Get the subtitles if any (handles both single and multiple tracks)
-    mediaSource = buildMediaSourceWithSubtitles(mediaSource, dataSourceFactory);
-    return mediaSource;
+    MediaItem mediaItem = VideoMediaItemFactory.fromUriAndType(uri, vType, sidecarSubtitleTracks());
+    return new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem);
   }
 
   /**
@@ -1229,98 +1199,14 @@ public class FullscreenExoPlayerFragment extends Fragment {
     return ret;
   }
 
-  private MediaSource getSubTitle(MediaSource mediaSource, Uri sturi, DataSource.Factory dataSourceFactory) {
-    // Backward compatibility: single subtitle
-    return buildMediaSourceWithSubtitles(mediaSource, dataSourceFactory);
-  }
-
-  /**
-   * Build media source with multiple subtitle tracks
-   */
-  private MediaSource buildMediaSourceWithSubtitles(MediaSource mediaSource, DataSource.Factory dataSourceFactory) {
-    List<SubtitleTrack> tracks = subtitleTracks != null && !subtitleTracks.isEmpty() 
-        ? subtitleTracks 
-        : (sturi != null ? createSingleTrackFromUri(sturi) : new ArrayList<>());
-    
-    if (tracks.isEmpty()) {
-      return mediaSource;
+  private List<SubtitleTrack> sidecarSubtitleTracks() {
+    if (subtitleTracks != null && !subtitleTracks.isEmpty()) {
+      return subtitleTracks;
     }
-
-    // Create array: video + all subtitle tracks
-    MediaSource[] mediaSources = new MediaSource[tracks.size() + 1];
-    mediaSources[0] = mediaSource;
-
-    for (int i = 0; i < tracks.size(); i++) {
-      SubtitleTrack track = tracks.get(i);
-      Uri trackUri = Uri.parse(track.getUrl());
-      String mimeType = track.getMimeType();
-      if (mimeType == null || mimeType.isEmpty()) {
-        mimeType = getMimeType(trackUri);
-      }
-
-      String languageLabel = track.getLabel();
-      if (languageLabel == null || languageLabel.isEmpty()) {
-        languageLabel = Locale.forLanguageTag(track.getLanguage()).getDisplayLanguage();
-      }
-
-      int selectionFlags = track.isDefault() ? C.SELECTION_FLAG_DEFAULT : 0;
-      if (track.isForced()) {
-        selectionFlags |= C.SELECTION_FLAG_FORCED;
-      }
-
-      MediaItem.SubtitleConfiguration subConfig = new MediaItem.SubtitleConfiguration.Builder(trackUri)
-        .setMimeType(mimeType)
-        .setUri(trackUri)
-        .setId(track.getId())
-        .setLabel(languageLabel)
-        .setRoleFlags(C.ROLE_FLAG_SUBTITLE)
-        .setSelectionFlags(selectionFlags)
-        .setLanguage(track.getLanguage())
-        .build();
-
-      SingleSampleMediaSource subtitleSource = new SingleSampleMediaSource.Factory(dataSourceFactory)
-        .createMediaSource(subConfig, C.TIME_UNSET);
-
-      mediaSources[i + 1] = subtitleSource;
+    if (sturi != null) {
+      return VideoMediaItemFactory.singleTrackFromUri(sturi, language);
     }
-
-    return new MergingMediaSource(mediaSources);
-  }
-
-  /**
-   * Create a single subtitle track from URI (backward compatibility)
-   */
-  private List<SubtitleTrack> createSingleTrackFromUri(Uri sturi) {
-    List<SubtitleTrack> tracks = new ArrayList<>();
-    SubtitleTrack track = new SubtitleTrack();
-    track.setId(subTitle != null ? subTitle : "default");
-    track.setUrl(sturi.toString());
-    track.setLanguage(language != null && !language.isEmpty() ? language : "en");
-    track.setLabel(language != null && !language.isEmpty() 
-        ? Locale.forLanguageTag(language).getDisplayLanguage() 
-        : "Subtitle");
-    track.setDefault(true);
-    tracks.add(track);
-    return tracks;
-  }
-
-  private String getMimeType(Uri sturi) {
-    String lastSegment = sturi.getLastPathSegment();
-    if (lastSegment == null) return MimeTypes.TEXT_VTT;
-    int lastDot = lastSegment.lastIndexOf(".");
-    if (lastDot == -1) return MimeTypes.TEXT_VTT;
-    String extension = lastSegment.substring(lastDot + 1).toLowerCase();
-    String mimeType = "";
-    if (extension.equals("vtt")) {
-      mimeType = MimeTypes.TEXT_VTT;
-    } else if (extension.equals("srt")) {
-      mimeType = MimeTypes.APPLICATION_SUBRIP;
-    } else if (extension.equals("ssa") || extension.equals("ass")) {
-      mimeType = MimeTypes.TEXT_SSA;
-    } else if (extension.equals("ttml") || extension.equals("dfxp") || extension.equals("xml")) {
-      mimeType = MimeTypes.APPLICATION_TTML;
-    }
-    return mimeType;
+    return new ArrayList<>();
   }
 
   /**
@@ -1354,25 +1240,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
         }
         for (int i = 0; i < trackGroup.length; i++) {
           Format format = trackGroup.getTrackFormat(i);
-          boolean matches = false;
-          if (format.id != null && format.id.equals(trackId)) {
-            matches = true;
-          } else if (trackLanguage != null && format.language != null && format.language.equals(trackLanguage)) {
-            matches = true;
-          } else if (format.language != null && format.language.equals(trackId)) {
-            matches = true;
-          }
-
-          if (matches) {
+          if (SubtitleTrackSelection.formatMatches(format, trackId, trackLanguage)) {
             TrackSelectionOverride override = new TrackSelectionOverride(trackGroup.getMediaTrackGroup(), ImmutableList.of(i));
             player.setTrackSelectionParameters(
-              player
-                .getTrackSelectionParameters()
-                .buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                .addOverride(override)
-                .build()
+              SubtitleTrackSelection.withTextOverride(player.getTrackSelectionParameters(), override)
             );
             selectedSubtitleId = trackId;
             Log.v(TAG, "Selected subtitle track: " + trackId);
@@ -1394,14 +1265,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
       return;
     }
     try {
-      player.setTrackSelectionParameters(
-        player
-          .getTrackSelectionParameters()
-          .buildUpon()
-          .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-          .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-          .build()
-      );
+      player.setTrackSelectionParameters(SubtitleTrackSelection.withTextDisabled(player.getTrackSelectionParameters()));
       selectedSubtitleId = null;
     } catch (Exception e) {
       Log.e(TAG, "Error disabling subtitles: " + e.getMessage());
@@ -1587,18 +1451,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   private void maybeEmitSubtitleFromTracks() {
-    if (player == null || trackSelector == null || !(trackSelector instanceof DefaultTrackSelector)) {
+    if (player == null) {
       return;
     }
     if (System.currentTimeMillis() - bridgeReadyAtMs < 800) {
       return;
     }
-    DefaultTrackSelector defaultTrackSelector = (DefaultTrackSelector) trackSelector;
-    if (defaultTrackSelector.getParameters().getRendererDisabled(C.TRACK_TYPE_TEXT)) {
-      if (!Objects.equals("off", lastEmittedSubtitleLanguage)) {
-        lastEmittedSubtitleLanguage = "off";
+    TrackSelectionParameters selectionParameters = player.getTrackSelectionParameters();
+    String offLanguage = SubtitleTrackSelection.offLanguageIfDisabled(selectionParameters);
+    if (offLanguage != null) {
+      if (!Objects.equals(offLanguage, lastEmittedSubtitleLanguage)) {
+        lastEmittedSubtitleLanguage = offLanguage;
         lastEmittedSubtitleTrackId = null;
-        postSubtitleChange("off", null);
+        postSubtitleChange(offLanguage, null);
       }
       return;
     }
