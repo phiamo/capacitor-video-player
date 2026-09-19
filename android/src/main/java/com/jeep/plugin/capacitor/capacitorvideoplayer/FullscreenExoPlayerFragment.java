@@ -13,9 +13,10 @@ import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -42,6 +43,7 @@ import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -80,14 +82,12 @@ import com.google.common.collect.ImmutableList;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.DefaultTimeBar;
-import androidx.media3.ui.PlayerControlView;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.datasource.DataSource;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.common.MimeTypes;
-import androidx.media3.common.util.Util;
 import androidx.media3.common.VideoSize;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
@@ -107,6 +107,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONException;
 
@@ -189,11 +190,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
   private PictureInPictureParams.Builder pictureInPictureParams;
   private MediaSession mediaSession;
-  
-  private PlayerControlView.VisibilityListener visibilityListener;
+
   private PackageManager packageManager;
   private Boolean isPIPModeeEnabled = true;
-  final Handler handler = new Handler();
+  final Handler handler = new Handler(Looper.getMainLooper());
   final Runnable mRunnable = new Runnable() {
     @RequiresApi(api = Build.VERSION_CODES.N)
     public void run() {
@@ -309,7 +309,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
       header_below.setText(smallTitle);
     }
     if (accentColor != "") {
-      Pbar.getIndeterminateDrawable().setColorFilter(Color.parseColor(accentColor), android.graphics.PorterDuff.Mode.MULTIPLY);
+      Pbar.getIndeterminateDrawable().setColorFilter(
+        new PorterDuffColorFilter(Color.parseColor(accentColor), PorterDuff.Mode.MULTIPLY)
+      );
       exo_progress.setPlayedColor(Color.parseColor(accentColor));
       exo_progress.setScrubberColor(Color.parseColor(accentColor));
     }
@@ -629,32 +631,35 @@ public class FullscreenExoPlayerFragment extends Fragment {
   /**
    * Sets the cast image in playerView when it is connected to a cast device
    */
-  private class setCastImage extends AsyncTask<Void, Void, Bitmap> {
-
-    protected Bitmap doInBackground(Void... params) {
-      final String image = artwork;
-      if (image != "") {
+  private void loadCastImage() {
+    final String image = artwork;
+    if (image == null || image.isEmpty()) {
+      return;
+    }
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    executor.execute(() -> {
+      try {
+        Bitmap bitmap = null;
         try {
           URL url = new URL(image);
           HttpURLConnection connection = (HttpURLConnection) url.openConnection();
           connection.setDoInput(true);
           connection.connect();
           InputStream input = connection.getInputStream();
-          Bitmap myBitmap = BitmapFactory.decodeStream(input);
-          return myBitmap;
+          bitmap = BitmapFactory.decodeStream(input);
         } catch (IOException e) {
           e.printStackTrace();
-          return null;
         }
-      } else {
-        return null;
+        final Bitmap result = bitmap;
+        new Handler(Looper.getMainLooper()).post(() -> {
+          if (cast_image != null) {
+            cast_image.setImageBitmap(result);
+          }
+        });
+      } finally {
+        executor.shutdown();
       }
-    }
-
-    @Override
-    protected void onPostExecute(Bitmap result) {
-      cast_image.setImageBitmap(result);
-    }
+    });
   }
 
   /**
@@ -832,7 +837,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     super.onStart();
     //if (chromecast && castContext != null) mRouter.addCallback(mSelector, mCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY);
 
-    if (Util.SDK_INT >= 24) {
+    if (Build.VERSION.SDK_INT >= 24) {
       if (styledPlayerView != null) {
         // If cast is playing then it doesn't start the local player once get backs from background
         if (castContext != null && Boolean.TRUE.equals(chromecast) && castPlayer != null && castPlayer.isCastSessionAvailable()) return;
@@ -901,7 +906,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     if (bkModeEnabled) isAppBackground = isApplicationSentToBackground(context);
 
     if (!isInPictureInPictureMode) {
-      if (Util.SDK_INT < 24) {
+      if (Build.VERSION.SDK_INT < 24) {
         if (player != null) player.setPlayWhenReady(false);
         releasePlayer();
       } else {
@@ -957,7 +962,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     //if (chromecast && castContext != null) castContext.addCastStateListener(castStateListener);
     if (!isInPictureInPictureMode) {
       hideSystemUi();
-      if ((Util.SDK_INT < 24 || player == null)) {
+      if ((Build.VERSION.SDK_INT < 24 || player == null)) {
         initializePlayer();
       }
     } else {
@@ -1609,7 +1614,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     );
     Drawable drawable = a.getDrawable(androidx.mediarouter.R.styleable.MediaRouteButton_externalRouteEnabledDrawable);
     a.recycle();
-    DrawableCompat.setTint(drawable, getContext().getResources().getColor(R.color.white));
+    DrawableCompat.setTint(drawable, ContextCompat.getColor(getContext(), R.color.white));
     drawable.setState(button.getDrawableState());
     button.setRemoteIndicatorDrawable(drawable);
   }
@@ -1730,7 +1735,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
                     .setMediaType(MediaMetadata.MEDIA_TYPE_VIDEO)
                     .setArtworkUri(Uri.parse(artwork))
                     .build();
-            new setCastImage().execute();
+            loadCastImage();
           } else {
             movieMetadata = new MediaMetadata.Builder()
                     .setTitle(title)
