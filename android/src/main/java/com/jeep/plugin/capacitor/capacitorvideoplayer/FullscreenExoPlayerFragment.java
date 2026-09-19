@@ -10,9 +10,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.content.res.TypedArray;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -42,10 +40,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
-import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.constraintlayout.widget.ConstraintLayout;
-import androidx.core.content.ContextCompat;
-import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -100,10 +95,6 @@ import com.google.android.gms.cast.framework.CastStateListener;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.jeep.plugin.capacitor.capacitorvideoplayer.Notifications.NotificationCenter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -307,18 +298,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
       initializeCastService();
     }
 
-    if (title != "") {
+    if (VideoPlayerChromeSupport.hasNonEmptyText(title)) {
       header_tv.setText(title);
     }
-    if (smallTitle != "") {
+    if (VideoPlayerChromeSupport.hasNonEmptyText(smallTitle)) {
       header_below.setText(smallTitle);
     }
-    if (accentColor != "") {
+    Integer accent = VideoPlayerChromeSupport.parseAccentColorOrNull(accentColor);
+    if (accent != null) {
       Pbar.getIndeterminateDrawable().setColorFilter(
-        new PorterDuffColorFilter(Color.parseColor(accentColor), PorterDuff.Mode.MULTIPLY)
+        new PorterDuffColorFilter(accent, PorterDuff.Mode.MULTIPLY)
       );
-      exo_progress.setPlayedColor(Color.parseColor(accentColor));
-      exo_progress.setScrubberColor(Color.parseColor(accentColor));
+      exo_progress.setPlayedColor(accent);
+      exo_progress.setScrubberColor(accent);
     }
 
     closeBtn = view.findViewById(R.id.exo_close);
@@ -644,20 +636,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
     ExecutorService executor = Executors.newSingleThreadExecutor();
     executor.execute(() -> {
       try {
-        Bitmap bitmap = null;
-        try {
-          URL url = new URL(image);
-          HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-          connection.setDoInput(true);
-          connection.connect();
-          InputStream input = connection.getInputStream();
-          bitmap = BitmapFactory.decodeStream(input);
-        } catch (IOException e) {
-          e.printStackTrace();
-        }
-        final Bitmap result = bitmap;
+        final Bitmap result = VideoPlayerChromeSupport.decodeCastArtworkBitmap(image);
         new Handler(Looper.getMainLooper()).post(() -> {
-          if (cast_image != null) {
+          if (VideoPlayerChromeSupport.canApplyCastArtwork(isAdded(), cast_image)) {
             cast_image.setImageBitmap(result);
           }
         });
@@ -1620,20 +1601,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * @param button
    */
   private void mediaRouteButtonColorWhite(MediaRouteButton button) {
-    if (button == null) return;
-    Context castContext = new ContextThemeWrapper(getContext(), androidx.mediarouter.R.style.Theme_MediaRouter);
-
-    TypedArray a = castContext.obtainStyledAttributes(
-      null,
-      androidx.mediarouter.R.styleable.MediaRouteButton,
-      androidx.mediarouter.R.attr.mediaRouteButtonStyle,
-      0
-    );
-    Drawable drawable = a.getDrawable(androidx.mediarouter.R.styleable.MediaRouteButton_externalRouteEnabledDrawable);
-    a.recycle();
-    DrawableCompat.setTint(drawable, ContextCompat.getColor(getContext(), R.color.white));
-    drawable.setState(button.getDrawableState());
-    button.setRemoteIndicatorDrawable(drawable);
+    VideoPlayerChromeSupport.applyMediaRouteButtonWhiteTint(getContext(), button);
   }
 
   /**
@@ -1745,7 +1713,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
           CastButtonFactory.setUpMediaRouteButton(context, mediaRouteButton);
 
           MediaMetadata movieMetadata;
-          if (artwork != "") {
+          if (VideoPlayerChromeSupport.hasNonEmptyText(artwork)) {
             movieMetadata = new MediaMetadata.Builder()
                     .setTitle(title)
                     .setSubtitle(smallTitle)
