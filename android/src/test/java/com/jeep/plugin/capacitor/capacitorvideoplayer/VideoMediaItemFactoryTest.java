@@ -8,6 +8,7 @@ import android.net.Uri;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.util.UnstableApi;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -18,6 +19,7 @@ import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 24)
+@UnstableApi
 public class VideoMediaItemFactoryTest {
 
   private static final Uri VIDEO_URI = Uri.parse("https://example.com/lecture.mp4");

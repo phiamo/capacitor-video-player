@@ -54,6 +54,7 @@ import androidx.mediarouter.media.MediaControlIntent;
 import androidx.mediarouter.media.MediaRouteSelector;
 import androidx.mediarouter.media.MediaRouter;
 import com.getcapacitor.JSObject;
+import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.C;
 import androidx.media3.session.MediaSession;
 import androidx.media3.exoplayer.DefaultLoadControl;
@@ -66,8 +67,8 @@ import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.AudioAttributes;
-import androidx.media3.cast.CastPlayer;
-import androidx.media3.cast.SessionAvailabilityListener;
+import androidx.media3.cast.RemoteCastPlayer;
+import androidx.media3.common.DeviceInfo;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
@@ -111,6 +112,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONException;
 
+@UnstableApi
 public class FullscreenExoPlayerFragment extends Fragment {
 
   public String videoPath;
@@ -209,7 +211,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private Integer resizeStatus = AspectRatioFrameLayout.RESIZE_MODE_FIT;
   private MediaRouteButton mediaRouteButton;
   private CastContext castContext;
-  private CastPlayer castPlayer;
+  private Player castPlayer;
   private MediaItem mediaItem;
   private MediaRouter mRouter;
   private MediaRouter.Callback mCallback = new EmptyCallback();
@@ -749,43 +751,33 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Perform pictureInPictureMode Action
    */
   private void pictureInPictureMode() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
-      styledPlayerView.setUseController(false);
-      styledPlayerView.setControllerAutoShow(false);
-      linearLayout.setVisibility(View.INVISIBLE);
-      Log.v(TAG, "PIP break 1");
-      // require android O or higher
-      if (
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
-      ) {
-        pictureInPictureParams = new PictureInPictureParams.Builder();
-        // setup height and width of the PIP window
-        Rational aspectRatio = new Rational(player.getVideoFormat().width, player.getVideoFormat().height);
-        pictureInPictureParams.setAspectRatio(aspectRatio).build();
-        getActivity().enterPictureInPictureMode(pictureInPictureParams.build());
-        Log.v(TAG, "PIP break 2");
-      } else {
-        getActivity().enterPictureInPictureMode();
-        Log.v(TAG, "PIP break 3");
-      }
-      isInPictureInPictureMode = getActivity().isInPictureInPictureMode();
-      CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
-      if (plugin != null) {
-        JSObject pipData = new JSObject();
-        pipData.put("fromPlayerId", playerId != null ? playerId : "fullscreen");
-        pipData.put("currentTime", getCurrentTime());
-        plugin.notifyJeepCapVideoPlayerPipStart(pipData);
-      }
-      if (sturi != null) {
-        setSubtitle(true);
-      }
-      if (player != null) play();
-
-      handler.postDelayed(mRunnable, 100);
-      Log.v(TAG, "PIP break 4");
-    } else {
-      Log.v(TAG, "pictureInPictureMode: doesn't support PIP");
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O
+        || !packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+      return;
     }
+    styledPlayerView.setUseController(false);
+    styledPlayerView.setControllerAutoShow(false);
+    linearLayout.setVisibility(View.INVISIBLE);
+    Log.v(TAG, "PIP break 1");
+    pictureInPictureParams = new PictureInPictureParams.Builder();
+    Rational aspectRatio = new Rational(player.getVideoFormat().width, player.getVideoFormat().height);
+    getActivity().enterPictureInPictureMode(pictureInPictureParams.setAspectRatio(aspectRatio).build());
+    Log.v(TAG, "PIP break 2");
+    isInPictureInPictureMode = getActivity().isInPictureInPictureMode();
+    CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+    if (plugin != null) {
+      JSObject pipData = new JSObject();
+      pipData.put("fromPlayerId", playerId != null ? playerId : "fullscreen");
+      pipData.put("currentTime", getCurrentTime());
+      plugin.notifyJeepCapVideoPlayerPipStart(pipData);
+    }
+    if (sturi != null) {
+      setSubtitle(true);
+    }
+    if (player != null) play();
+
+    handler.postDelayed(mRunnable, 100);
+    Log.v(TAG, "PIP break 4");
   }
 
   @RequiresApi(api = Build.VERSION_CODES.N)
@@ -840,7 +832,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     if (Build.VERSION.SDK_INT >= 24) {
       if (styledPlayerView != null) {
         // If cast is playing then it doesn't start the local player once get backs from background
-        if (castContext != null && Boolean.TRUE.equals(chromecast) && castPlayer != null && castPlayer.isCastSessionAvailable()) return;
+        if (castContext != null && Boolean.TRUE.equals(chromecast) && isRemoteCastConnected(castPlayer)) return;
 
         initializePlayer();
         if (player != null && player.getCurrentPosition() != 0) {
@@ -1027,7 +1019,6 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
     WindowCompat.setDecorFitsSystemWindows(window, true);
-    window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       WindowManager.LayoutParams attrs = window.getAttributes();
@@ -1703,7 +1694,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
         public void onComplete(Task<CastContext> task) {
           if (task.isSuccessful()) {
           castContext = task.getResult();
-          castPlayer = new CastPlayer(castContext);
+          castPlayer = new RemoteCastPlayer.Builder(context).build();
           mRouter = MediaRouter.getInstance(context);
           mSelector =
                   new MediaRouteSelector.Builder()
@@ -1749,46 +1740,47 @@ public class FullscreenExoPlayerFragment extends Fragment {
                           .setMediaMetadata(movieMetadata)
                           .build();
 
-          castPlayer.setSessionAvailabilityListener(
-                  new SessionAvailabilityListener() {
-                    @Override
-                    public void onCastSessionAvailable() {
-                      isCastSession = true;
-                      final Long videoPosition = player.getCurrentPosition();
-                      if (pipEnabled) {
-                        pipBtn.setVisibility(View.GONE);
-                      }
-                      resizeBtn.setVisibility(View.GONE);
-                      player.setPlayWhenReady(false);
-                      cast_image.setVisibility(View.VISIBLE);
-                      castPlayer.setMediaItem(mediaItem, videoPosition);
-                      styledPlayerView.setPlayer(castPlayer);
-                      styledPlayerView.setControllerShowTimeoutMs(0);
-                      styledPlayerView.setControllerHideOnTouch(false);
-                      //We perform a click because for some weird reason, the layout is black until the user clicks on it
-                      styledPlayerView.performClick();
-                    }
-
-                    @Override
-                    public void onCastSessionUnavailable() {
-                      isCastSession = false;
-                      final Long videoPosition = castPlayer.getCurrentPosition();
-                      if (pipEnabled) {
-                        pipBtn.setVisibility(View.VISIBLE);
-                      }
-                      resizeBtn.setVisibility(View.VISIBLE);
-                      cast_image.setVisibility(View.GONE);
-                      styledPlayerView.setPlayer(player);
-                      player.setPlayWhenReady(true);
-                      player.seekTo(videoPosition);
-                      styledPlayerView.setControllerShowTimeoutMs(3000);
-                      styledPlayerView.setControllerHideOnTouch(true);
-                    }
-                  }
-          );
-
           castPlayer.addListener(
                   new Player.Listener() {
+                    private boolean lastCastSessionAvailable = isRemoteCastConnected(castPlayer);
+
+                    @Override
+                    public void onDeviceInfoChanged(DeviceInfo deviceInfo) {
+                      boolean available = isRemoteCastConnected(castPlayer);
+                      if (available == lastCastSessionAvailable) {
+                        return;
+                      }
+                      lastCastSessionAvailable = available;
+                      if (available) {
+                        isCastSession = true;
+                        final Long videoPosition = player.getCurrentPosition();
+                        if (pipEnabled) {
+                          pipBtn.setVisibility(View.GONE);
+                        }
+                        resizeBtn.setVisibility(View.GONE);
+                        player.setPlayWhenReady(false);
+                        cast_image.setVisibility(View.VISIBLE);
+                        castPlayer.setMediaItem(mediaItem, videoPosition);
+                        styledPlayerView.setPlayer(castPlayer);
+                        styledPlayerView.setControllerShowTimeoutMs(0);
+                        styledPlayerView.setControllerHideOnTouch(false);
+                        styledPlayerView.performClick();
+                      } else {
+                        isCastSession = false;
+                        final Long videoPosition = castPlayer.getCurrentPosition();
+                        if (pipEnabled) {
+                          pipBtn.setVisibility(View.VISIBLE);
+                        }
+                        resizeBtn.setVisibility(View.VISIBLE);
+                        cast_image.setVisibility(View.GONE);
+                        styledPlayerView.setPlayer(player);
+                        player.setPlayWhenReady(true);
+                        player.seekTo(videoPosition);
+                        styledPlayerView.setControllerShowTimeoutMs(3000);
+                        styledPlayerView.setControllerHideOnTouch(true);
+                      }
+                    }
+
                     private void notifyCastPlayPause() {
                       Map<String, Object> info = new HashMap<String, Object>() {
                         {
@@ -1835,6 +1827,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
       Log.w(TAG, "Cast init failed, disabling chromecast", e);
       disableChromecastUi();
     }
+  }
+
+  static boolean isRemoteCastConnected(Player player) {
+    if (player == null) {
+      return false;
+    }
+    return isRemoteCastConnected(player.getDeviceInfo());
+  }
+
+  static boolean isRemoteCastConnected(DeviceInfo info) {
+    return info != null
+        && info.playbackType == DeviceInfo.PLAYBACK_TYPE_REMOTE
+        && !RemoteCastPlayer.DEVICE_INFO_REMOTE_EMPTY.equals(info);
   }
 
   private void disableChromecastUi() {

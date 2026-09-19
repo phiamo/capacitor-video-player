@@ -4,10 +4,12 @@ import androidx.media3.common.C;
 import androidx.media3.common.Format;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.common.util.UnstableApi;
 
 /**
  * Media3 subtitle pick / change / off via {@link TrackSelectionParameters}.
  */
+@UnstableApi
 final class SubtitleTrackSelection {
 
   static final String OFF_LANGUAGE = "off";

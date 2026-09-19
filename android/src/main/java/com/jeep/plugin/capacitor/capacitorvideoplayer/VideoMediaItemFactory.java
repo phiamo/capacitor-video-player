@@ -4,6 +4,7 @@ import android.net.Uri;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.util.UnstableApi;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.Locale;
  * {@link MediaItem.DrmConfiguration} here only. Story 55.2 — sidecar tracks are {@link
  * MediaItem.SubtitleConfiguration} on this item.
  */
+@UnstableApi
 public final class VideoMediaItemFactory {
 
   private VideoMediaItemFactory() {}
