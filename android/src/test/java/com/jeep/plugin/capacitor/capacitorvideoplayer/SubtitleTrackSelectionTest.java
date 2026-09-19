@@ -15,7 +15,6 @@ import com.google.common.collect.ImmutableList;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
-import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
@@ -38,7 +37,7 @@ public class SubtitleTrackSelectionTest {
     Format format = new Format.Builder().setId("de").setLanguage("de").setSampleMimeType(MimeTypes.TEXT_VTT).build();
     TrackGroup group = new TrackGroup(format);
     TrackSelectionOverride override = new TrackSelectionOverride(group, ImmutableList.of(0));
-    TrackSelectionParameters current = new TrackSelectionParameters.Builder(RuntimeEnvironment.getApplication())
+    TrackSelectionParameters current = new TrackSelectionParameters.Builder()
       .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
       .build();
 
@@ -50,7 +49,7 @@ public class SubtitleTrackSelectionTest {
 
   @Test
   public void withTextDisabled_emitsOffViaParameters() {
-    TrackSelectionParameters current = new TrackSelectionParameters.Builder(RuntimeEnvironment.getApplication()).build();
+    TrackSelectionParameters current = new TrackSelectionParameters.Builder().build();
 
     TrackSelectionParameters next = SubtitleTrackSelection.withTextDisabled(current);
 

@@ -8,7 +8,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 import com.jeep.plugin.capacitor.capacitorvideoplayer.Notifications.NotificationCenter;
 import com.jeep.plugin.capacitor.capacitorvideoplayer.R;
-import com.squareup.picasso.Picasso;
+import com.bumptech.glide.Glide;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -39,7 +39,7 @@ public class VideoRecyclerViewHolder extends RecyclerView.ViewHolder {
                 new Runnable() {
                     @Override
                     public void run() {
-                        Picasso.get().load(modelVideo.getData()).placeholder(R.drawable.ic_image_background).fit().into(tv_thumbnail);
+                        Glide.with(tv_thumbnail).load(modelVideo.getData()).placeholder(R.drawable.ic_image_background).into(tv_thumbnail);
                     }
                 }
             );

@@ -19,6 +19,51 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
         cmfv: 'video/mp4',
         m3u8: 'application/x-mpegURL',
     };
+    const mimeTypeForExtension = (extension) => {
+        if (!extension) {
+            return undefined;
+        }
+        const lower = extension.toLowerCase();
+        return lower in videoTypes ? videoTypes[lower] : null;
+    };
+    /**
+     * Mime type the web player uses for `url`: the path's extension wins (`.../playlist.m3u8`,
+     * `mp4:lecture.mp4/playlist.m3u8`), then an extension query parameter (`?type=m3u8`), and a URL
+     * without any extension is treated as mp4. An extension the web player cannot play returns null.
+     */
+    const detectVideoType = (url) => {
+        var _a, _b;
+        if (!url) {
+            return null;
+        }
+        let path = url;
+        let query = '';
+        try {
+            const parsed = new URL(url, 'http://localhost');
+            path = parsed.pathname;
+            query = parsed.search;
+        }
+        catch (_c) {
+            const queryStart = url.indexOf('?');
+            if (queryStart >= 0) {
+                path = url.substring(0, queryStart);
+                query = url.substring(queryStart);
+            }
+        }
+        const fromPath = mimeTypeForExtension((_a = path.match(/\.([a-z0-9]+)$/i)) === null || _a === void 0 ? void 0 : _a[1]);
+        if (fromPath !== undefined) {
+            return fromPath;
+        }
+        const params = new URLSearchParams(query);
+        for (const key of possibleQueryParameterExtensions) {
+            const value = (_b = params.get(key)) !== null && _b !== void 0 ? _b : undefined;
+            const fromQuery = mimeTypeForExtension((value === null || value === void 0 ? void 0 : value.includes('.')) ? value.split('.').pop() : value);
+            if (fromQuery !== undefined) {
+                return fromQuery;
+            }
+        }
+        return 'video/mp4';
+    };
 
     class VideoPlayer {
         constructor(mode, url, playerId, rate, exitOnEnd, loopOnEnd, container, zIndex, width, height, subtitleTracks, selectedSubtitleId, subtitleOptions, positionUpdateInterval) {
@@ -320,39 +365,8 @@ var capacitorCapacitorVideoPlayer = (function (exports, core, Hls) {
             });
         }
         _getVideoType() {
-            const sUrl = this._url ? this._url : '';
-            if (sUrl != null && sUrl.length > 0) {
-                Object.entries(videoTypes).forEach(([extension, mimeType]) => {
-                    // we search for dot + extension (e.g. `.mp4`) for URLs that have the extension in the filename
-                    // e.g. https://vimeo.com/?file=my-video.mp4
-                    const hasDotExtension = sUrl.match(new RegExp(`.(${extension})`, 'i'));
-                    if (hasDotExtension) {
-                        return (this._videoType = mimeType);
-                    }
-                    // we search for the extension (e.g. `m3u8`) for URLs that might have the extension as a query parameter
-                    // e.g. https://youtube.com/?v=7894289374&type=m3u8
-                    const hasExtensionInUrl = sUrl.match(new RegExp(`(${extension})`, 'i'));
-                    if (hasExtensionInUrl) {
-                        return (this._videoType = mimeType);
-                    }
-                });
-                // we check for not supported extensions for URLs that have the extension in the filename
-                // e.g. https://vimeo.com/?file=not-supported-extension-video.mkv
-                const hasNotSupportedDotExtension = sUrl.match(/\.(.*)/i);
-                if (hasNotSupportedDotExtension) {
-                    return (this._videoType = null);
-                }
-                // we check for not supported extensions for URLs that might have the extension as a query parameter
-                // e.g. https://youtube.com/?v=3982748927&filetype=mkv
-                const hasNotSupportedExtensionInUrl = sUrl.match(new RegExp(`(${possibleQueryParameterExtensions.join('|')})\=+(.*)&?(?=&|$))`, 'i'));
-                if (hasNotSupportedExtensionInUrl) {
-                    return (this._videoType = null);
-                }
-                // No extension found, then we assume it's 'mp4' (Match case for '')
-                return 'video/mp4';
-            }
-            // URL was not defined, we return null
-            return null;
+            this._videoType = detectVideoType(this._url);
+            return this._videoType;
         }
         async _doHide(exitEl, duration) {
             clearTimeout(this._initial);

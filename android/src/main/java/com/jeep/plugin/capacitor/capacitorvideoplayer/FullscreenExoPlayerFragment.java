@@ -7,6 +7,7 @@ import android.app.PictureInPictureParams;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.TypedArray;
@@ -58,7 +59,9 @@ import androidx.media3.common.util.UnstableApi;
 import androidx.media3.common.C;
 import androidx.media3.session.MediaSession;
 import androidx.media3.exoplayer.DefaultLoadControl;
+import androidx.media3.common.text.CueGroup;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.util.EventLogger;
 import androidx.media3.common.Format;
 import androidx.media3.exoplayer.LoadControl;
 import androidx.media3.common.MediaItem;
@@ -1070,6 +1073,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     if (mediaSource != null) {
       player.setAudioAttributes(AudioAttributes.DEFAULT, true);
       player.addListener(listener);
+      attachDebugPlaybackLogging(player);
       player.setMediaSource(mediaSource);
       player.prepare();
       if (loopOnEnd) {
@@ -1095,6 +1099,26 @@ public class FullscreenExoPlayerFragment extends Fragment {
     DwbnVideoHandoffBridge.attach(player);
 
     NotificationCenter.defaultCenter().postNotification("initializePlayer", info);
+  }
+
+  /**
+   * Debuggable host apps only: Media3 EventLogger (tracks, selections, load errors) plus cue counts
+   * under tag {@code EventLogger} / {@link #TAG}, to tell a missing selection, a failed sidecar load
+   * and invisible cues apart.
+   */
+  private void attachDebugPlaybackLogging(ExoPlayer exoPlayer) {
+    if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
+      return;
+    }
+    exoPlayer.addAnalyticsListener(new EventLogger());
+    exoPlayer.addListener(
+      new Player.Listener() {
+        @Override
+        public void onCues(CueGroup cueGroup) {
+          Log.v(TAG, "cues: " + cueGroup.cues.size() + (cueGroup.cues.isEmpty() ? "" : " first=" + cueGroup.cues.get(0).text));
+        }
+      }
+    );
   }
 
   private void setSubtitle(boolean transparent) {

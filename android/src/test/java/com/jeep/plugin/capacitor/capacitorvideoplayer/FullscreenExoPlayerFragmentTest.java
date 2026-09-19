@@ -52,7 +52,7 @@ public class FullscreenExoPlayerFragmentTest {
 
   @Test
   public void fragmentSource_doesNotUseDeprecatedPipFullscreenOrCastSessionApis() throws IOException {
-    String source = Files.readString(fragmentSource(), StandardCharsets.UTF_8);
+    String source = new String(Files.readAllBytes(fragmentSource()), StandardCharsets.UTF_8);
     assertFalse("no-arg PiP", source.matches("(?s).*enterPictureInPictureMode\\(\\s*\\).*"));
     assertTrue(source.contains("enterPictureInPictureMode(pictureInPictureParams"));
     assertTrue(source.contains("VERSION_CODES.O"));
