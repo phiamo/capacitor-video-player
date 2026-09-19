@@ -134,22 +134,13 @@ When you start casting, the video controllers will be available to control your 
 
 Cast title will be the same as title and smallTitle, if these are not added, then it will be blank
 
-### Android Quirks
+### Android setup (8.3.0+)
 
-Since 3.7.2, you need to add few things in your Android project to get the plugin working.
-
-- build.gradle (app)
-
-```java
-dependencies {
-    ...
-    implementation 'com.google.android.gms:play-services-cast-framework:21.2.0'
-}
-```
+Chromecast requires manifest meta-data in your **host** app. The plugin bundles Media3 and Cast dependencies — do **not** pin old ExoPlayer 2 or `play-services-cast-framework:21.2.0` in your app `build.gradle`.
 
  - AndroidManifest.xml
 
-```java
+```xml
 <application>
     ...
     <meta-data
@@ -158,22 +149,17 @@ dependencies {
 </application>
 ```
 
- - MainActivity.java
+If you upgraded from **8.2.x**, replace `com.google.android.exoplayer2.ext.cast.DefaultCastOptionsProvider` with the value above.
 
-```java
-import android.os.Bundle;
+**ProGuard / R8** (release builds with `minifyEnabled true`):
 
-import com.google.android.gms.cast.framework.CastContext;
-
-
-public class MainActivity extends BridgeActivity {
-  @Override
-  protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    CastContext.getSharedInstance(this); // <--- add this
-  }
-}
+```proguard
+-keep class androidx.media3.cast.DefaultCastOptionsProvider { *; }
 ```
+
+Cast is initialized asynchronously inside the fullscreen player — you do **not** need `CastContext.getSharedInstance(this)` in `MainActivity`.
+
+**Upgrading from 8.2.x:** pin `media3Version = '1.11.1'` and force every `androidx.media3` module in the host Gradle (see [readme Upgrading a host app](../readme.md#upgrading-a-host-app-830)).
 
 ## Methods
 

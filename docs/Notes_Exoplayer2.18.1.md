@@ -1,5 +1,7 @@
 # Notes from PhantomPainX on using v2.18.1
 
+> **Archived — historical only (2023).** This documents ExoPlayer **2.18.1**, `StyledPlayerView`, and `extension-cast`. Current Android playback is **androidx.media3 1.11.1** — see [CHANGELOG 8.3.0](../CHANGELOG.md) and [API.md Chromecast](./API.md#chromecast-support). Do **not** use this file as setup instructions.
+
 PR Exoplayer v2.18.1 and some updates - fixes #114
 
 ## Updated dependencies

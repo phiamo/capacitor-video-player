@@ -1,8 +1,8 @@
 <p align="center"><br><img src="https://user-images.githubusercontent.com/236501/85893648-1c92e880-b7a8-11ea-926d-95355b8175c7.png" width="128" height="128" /></p>
 <h3 align="center">Video Player</h3>
-<p align="center"><strong><code>capacitor-video-player</code></strong></p>
+<p align="center"><strong><code>@brylsherbert/capacitor-video-player</code></strong></p>
 <br>
-<p align="center" style="font-size:50px;color:red"><strong>CAPACITOR 6</strong></p><br>
+<p align="center" style="font-size:32px;color:red"><strong>CAPACITOR 8</strong> — fork maintained for DWBN / phiamo (see <a href="./CHANGELOG.md">CHANGELOG</a> 8.3.0 Media3)</p><br>
 <br>
 <p align="center" style="font-size:20px;color:red"><a href="https://github.com/jepiqueau/capacitor-video-player/blob/master/docs/Jean_Pierre_Queau.md"><strong>Special note from Jean Pierre Quéau the original founder of this project.</strong></a></p>
 <br>
@@ -33,7 +33,9 @@
 | Harmon Wood       | [harmonwood](https://github.com/harmonwood) |        | ✅     |
 | Quéau Jean Pierre | [jepiqueau](https://github.com/jepiqueau)   |        | ❌     |
 
-## LATEST FOR CAPACITOR 6 (main)
+## LATEST FOR CAPACITOR 8 (main)
+
+Peer dependency: `@capacitor/core >= 8.0.0`. Current release **8.3.0**.
 
 ## Browser Support
 
@@ -46,7 +48,7 @@ meaning that it will not work in IE11 without additional JavaScript transformati
 ## Installation
 
   ```bash
-  npm install --save capacitor-video-player
+  npm install --save @brylsherbert/capacitor-video-player
   npx cap sync
   npx cap sync @capacitor-community/electron
   ```
@@ -67,7 +69,54 @@ meaning that it will not work in IE11 without additional JavaScript transformati
 
 ## Configuration
 
-No configuration required for this plugin
+No Capacitor plugin configuration is required for basic playback.
+
+**Android Chromecast:** your host app must set Cast options in `AndroidManifest.xml` (see [docs/API.md](./docs/API.md#chromecast-support)). **Android 13+:** declare `POST_NOTIFICATIONS` in the host manifest and request at runtime if you rely on lock-screen / media notifications together with other plugins.
+
+## Upgrading a host app (8.3.0)
+
+**Capacitor / JavaScript:** no changes — `initPlayer`, play/pause/seek, subtitle methods, and `jeepCapVideoPlayer*` events are unchanged from 8.2.x.
+
+**Android host app:** update manifest/Gradle, then `npx cap sync android`.
+
+1. Bump to **8.3.0** (or newer) and run `npx cap sync android`.
+2. **Pin one Media3 version** — in `android/variables.gradle` (or `ext`):
+
+   ```gradle
+   media3Version = '1.11.1'
+   ```
+
+   In the root `android/build.gradle`:
+
+   ```gradle
+   allprojects {
+       configurations.configureEach {
+           resolutionStrategy {
+               eachDependency { details ->
+                   if (details.requested.group == 'androidx.media3') {
+                       details.useVersion rootProject.ext.media3Version
+                   }
+               }
+           }
+       }
+   }
+   ```
+
+3. **Do not** add `com.google.android.exoplayer:exoplayer-*:2.x` or copy old `play-services-cast-framework:21.2.0` into your app module. The plugin ships Media3 **1.11.1** and Cast framework **22.3.1**.
+4. **Chromecast manifest (required if you use Cast):** change the options provider class from ExoPlayer 2 to Media3:
+
+   `com.google.android.exoplayer2.ext.cast.DefaultCastOptionsProvider` → `androidx.media3.cast.DefaultCastOptionsProvider`
+
+   See [API.md Chromecast](./docs/API.md#chromecast-support). Do **not** add sync `CastContext.getSharedInstance(this)` in `MainActivity` — 8.3.0 initializes Cast inside the player.
+5. **Release builds with minify:** add to `proguard-rules.pro`:
+
+   ```proguard
+   -keep class androidx.media3.cast.DefaultCastOptionsProvider { *; }
+   ```
+
+   The class is referenced only from manifest meta-data and can be stripped by R8.
+6. **Android 13+ (API 33+):** `POST_NOTIFICATIONS` in the host manifest + runtime request when showing media notifications.
+7. If the app also uses `capacitor-plugin-playlist`, ship playlist **0.12.0** in the **same** release. Session ids: video `org.dwbn.video`, playlist `org.dwbn.playlist`.
 
 ## Supported methods
 
@@ -113,6 +162,8 @@ No configuration required for this plugin
 | jeepCapVideoPlayerPause | ✅      | ✅  | ✅       | ✅  |
 | jeepCapVideoPlayerEnded | ✅      | ✅  | ✅       | ✅  |
 | jeepCapVideoPlayerExit  | ✅      | ✅  | ✅       | ✅  |
+| jeepCapVideoPlayerPipStart | ✅   | ❌  | ❌       | ❌  |
+| jeepCapVideoPlayerPipStop  | ✅   | ❌  | ❌       | ❌  |
 
 ### Seek / subtitle listener payloads
 
@@ -151,22 +202,18 @@ No configuration required for this plugin
  
 - [vue-videoplayer-app](https://github.com/jepiqueau/vue-videoplayer-app-starter)
 
-## Usage 2.4.7
+## Usage 2.4.7 (historical)
 
-- [see capacitor documentation](https://capacitor.ionicframework.com/docs/getting-started/with-ionic)
+Capacitor 2 API — **not** current. See [Usage_2.4.7.md](./docs/Usage_2.4.7.md) (archived).
 
-- [see usage 2.4.7](https://github.com/jepiqueau/capacitor-video-player/blob/master/docs/Usage_2.4.7.md)
+## Usage 3.x (historical)
 
-## Usage > 3.0.0 
-
-- [see capacitor documentation](https://capacitor.ionicframework.com/docs/getting-started/with-ionic)
-
-- [see usage > 3.0.0](https://github.com/jepiqueau/capacitor-video-player/blob/master/docs/Usage_3.0.0.md)
+Capacitor 3 import patterns — **not** current. See [Usage_3.0.0.md](./docs/Usage_3.0.0.md) (archived). Install **`@brylsherbert/capacitor-video-player@8.3.0`** with Capacitor 8 plugin imports today.
 
 ## Dependencies
 
 - hls.js for HLS videos on Web and Electron platforms
-- ExoPlayer for HLS, DASH, SmoothStreaming videos on Android platform
+- **Android:** [androidx.media3](https://developer.android.com/jetpack/androidx/releases/media3) **1.11.1** (`ExoPlayer`, `PlayerView`, `MediaSession`, `RemoteCastPlayer`) for HLS, DASH, SmoothStreaming, and progressive video. Do **not** add legacy `com.google.android.exoplayer:exoplayer-*:2.x` in your host app.
 
 ## Contributors ✨
 

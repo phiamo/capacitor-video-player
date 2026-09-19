@@ -5,11 +5,16 @@
 ### Changed
 - **Android:** Migrate native video playback from ExoPlayer 2.19 to **androidx.media3** 1.11.1 (HLS, DASH, SmoothStreaming, progressive). Capacitor JS API and event payloads are unchanged.
 - **Android:** Sidecar subtitles attach as `MediaItem.SubtitleConfiguration` on the shared `VideoMediaItemFactory` item (Story 55.2).
-- **Android:** Picture-in-picture, lock-screen `MediaSession`, and Chromecast run on Media3 (`MediaSession.Builder`, `CastPlayer`). PiP exit no longer calls `finishAndRemoveTask()` (preserves Capacitor activity for audio handoff).
+- **Android:** Picture-in-picture, lock-screen `MediaSession`, and Chromecast run on Media3 (`MediaSession.Builder`, `RemoteCastPlayer`). PiP exit no longer calls `finishAndRemoveTask()` (preserves Capacitor activity for audio handoff).
 
 ### Notes for host apps
+- Run `npx cap sync android` after bumping to 8.3.0.
 - Set `com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME` to `androidx.media3.cast.DefaultCastOptionsProvider` in `AndroidManifest.xml` (replaces `com.google.android.exoplayer2.ext.cast.DefaultCastOptionsProvider`).
-- Pin the same `media3Version` across all `androidx.media3` artifacts in the host app Gradle (see Epic 55 app pin in Story 55.7).
+- Pin the same `media3Version` across all `androidx.media3` artifacts in the host app Gradle (example in [readme.md](./readme.md#upgrading-a-host-app-830)).
+- Do **not** add `com.google.android.exoplayer:exoplayer-*:2.x` or host `play-services-cast-framework:21.2.0` — the plugin already depends on Media3 1.11.1 and Cast framework 22.3.1.
+- Release builds: `-keep class androidx.media3.cast.DefaultCastOptionsProvider { *; }` in ProGuard (manifest-only reference).
+- Declare `POST_NOTIFICATIONS` in the host manifest and request on API 33+ when using media notifications.
+- If the app uses `capacitor-plugin-playlist`, ship **0.12.0** in the same release. No Capacitor/JS changes required.
 
 ## [8.2.20] - 2026-09-14
 
