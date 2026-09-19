@@ -33,4 +33,16 @@ describe('detectVideoType', () => {
     expect(detectVideoType('')).toBe(null);
     expect(detectVideoType(undefined)).toBe(null);
   });
+
+  it('accepts uppercase path extensions', () => {
+    expect(detectVideoType('https://vod.example.org/lecture.M3U8')).toBe('application/x-mpegURL');
+  });
+
+  it('parses relative paths with a base URL', () => {
+    expect(detectVideoType('/media/clip.mp4')).toBe('video/mp4');
+  });
+
+  it('ignores URL fragments when reading the path extension', () => {
+    expect(detectVideoType('https://vod.example.org/lecture.mp4#t=120')).toBe('video/mp4');
+  });
 });

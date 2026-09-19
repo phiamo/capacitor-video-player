@@ -60,6 +60,8 @@ public class FullscreenExoPlayerFragmentTest {
     assertFalse(source.contains("setSessionAvailabilityListener"));
     assertTrue(source.contains("onDeviceInfoChanged"));
     assertTrue(source.contains("new RemoteCastPlayer.Builder"));
+    assertTrue(source.contains("DwbnVideoHandoffBridge.attach"));
+    assertTrue(source.contains("DwbnVideoHandoffBridge.detach"));
   }
 
   private static Path fragmentSource() {
