@@ -1091,8 +1091,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
     if (mediaSession != null) {
       mediaSession.release();
+      mediaSession = null;
     }
-    mediaSession = new MediaSession.Builder(context, player).build();
+    // Must not share Media3's default empty session id with the playlist plugin (handoff keeps audio session alive).
+    mediaSession = new MediaSession.Builder(context, player).setId("org.dwbn.video").build();
 
     NotificationCenter.defaultCenter().postNotification("initializePlayer", info);
   }
