@@ -62,6 +62,13 @@ public class FullscreenExoPlayerFragmentTest {
     assertTrue(source.contains("new RemoteCastPlayer.Builder"));
     assertTrue(source.contains("DwbnVideoHandoffBridge.attach"));
     assertTrue(source.contains("DwbnVideoHandoffBridge.detach"));
+    int castBuilder = source.indexOf("new MediaItem.Builder()");
+    assertTrue(castBuilder >= 0);
+    String castItem = source.substring(castBuilder, source.indexOf(".build();", castBuilder));
+    assertFalse("Cast MediaItem must not attach DRM", castItem.contains("setDrmConfiguration"));
+    assertTrue(source.contains("player.prepare();\n      if (drmSession != null) {\n        drmSession.start();"));
+    assertTrue(source.contains("drmSession.release();"));
+    assertTrue(source.indexOf("drmSession.release();") < source.indexOf("player.release();"));
   }
 
   private static Path fragmentSource() {
