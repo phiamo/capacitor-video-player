@@ -67,6 +67,7 @@ import androidx.media3.common.Tracks;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.cast.RemoteCastPlayer;
 import androidx.media3.common.DeviceInfo;
+import androidx.media3.exoplayer.drm.DrmSessionManager;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
@@ -1146,8 +1147,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
   private DefaultMediaSourceFactory drmAwareMediaSourceFactory(DataSource.Factory dataSourceFactory) {
     DefaultMediaSourceFactory factory = new DefaultMediaSourceFactory(dataSourceFactory);
-    if (drmSession != null) {
-      factory.setDrmSessionManagerProvider(unused -> drmSession.getDrmSessionManager());
+    final VideoDrmSession session = drmSession;
+    if (session != null) {
+      factory.setDrmSessionManagerProvider(unused -> {
+        DrmSessionManager manager = session.getDrmSessionManager();
+        return manager != null ? manager : DrmSessionManager.DRM_UNSUPPORTED;
+      });
     }
     return factory;
   }

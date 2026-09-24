@@ -1,28 +1,45 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { webDrmNotSupported } from './web';
+import { CapacitorVideoPlayerWeb } from './web';
 
-describe('webDrmNotSupported', () => {
-  it('allows initPlayer without drm', () => {
-    expect(webDrmNotSupported({ url: 'https://example.com/lecture.mp4' })).toBeNull();
+function stubDocument(): void {
+  const g = globalThis as typeof globalThis & { document?: unknown };
+  g.document = {
+    addEventListener(): void {},
+    removeEventListener(): void {},
+    querySelector(): null {
+      return null;
+    },
+    createElement(): Record<string, unknown> {
+      return { id: '', appendChild(): void {} };
+    },
+  };
+}
+
+describe('CapacitorVideoPlayerWeb.initPlayer drm', () => {
+  beforeEach(() => {
+    stubDocument();
   });
 
-  it('refuses drm before a player is created', () => {
-    expect(
-      webDrmNotSupported({
-        url: 'https://cdn.example/drm/video.m3u8',
-        drm: {
-          widevineLicenseUrl: 'https://license.example/wv',
-          playbackSessionId: 'sess-1',
-          renewalCredential: 'cred',
-          streamLimit: { mode: 'axinom_csl', renewalIntervalSeconds: 300 },
-        },
-      }),
-    ).toEqual({
+  it('resolves notSupported and does not create a player', async () => {
+    const player = new CapacitorVideoPlayerWeb();
+    const result = await player.initPlayer({
+      mode: 'fullscreen',
+      url: 'https://cdn.example/drm/video.m3u8',
+      playerId: 'fullscreen',
+      drm: {
+        widevineLicenseUrl: 'https://license.example/wv',
+        playbackSessionId: 'sess-1',
+        renewalCredential: 'cred',
+        streamLimit: { mode: 'axinom_csl', renewalIntervalSeconds: 300 },
+      },
+    });
+    expect(result).toEqual({
       result: false,
       method: 'initPlayer',
       code: 'notSupported',
       message: 'DRM not supported on this platform yet',
     });
+    expect((player as unknown as { _players: unknown })._players).toEqual([]);
   });
 });

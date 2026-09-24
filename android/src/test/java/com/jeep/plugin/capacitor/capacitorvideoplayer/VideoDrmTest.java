@@ -61,10 +61,38 @@ public class VideoDrmTest {
   }
 
   @Test
+  public void open_nullSession_isNoProvider() {
+    VideoDrm.setProvider((drm, onError) -> null);
+    VideoDrm.OpenAttempt attempt = VideoDrm.open(new JSObject(), error -> {});
+    assertEquals(VideoDrm.CODE_NO_PROVIDER, attempt.failureCode);
+    assertNull(attempt.session);
+  }
+
+  @Test
+  public void open_providerThrows_onErrorUnknownAndNoSession() {
+    List<String> errors = new ArrayList<>();
+    VideoDrm.setProvider((drm, onError) -> {
+      throw new IllegalStateException("open failed");
+    });
+    VideoDrm.OpenAttempt attempt = VideoDrm.open(new JSObject(), errors::add);
+    assertEquals(VideoDrm.CODE_NO_PROVIDER, attempt.failureCode);
+    assertNull(attempt.session);
+    assertEquals(1, errors.size());
+    assertEquals(VideoDrm.ERROR_UNKNOWN, errors.get(0));
+  }
+
+  @Test
   public void errorListenerData_carriesDiscriminator() {
     JSObject data = VideoDrm.errorListenerData("fullscreen", VideoDrm.ERROR_BLOCKED_BY_STREAM_LIMIT);
     assertEquals("fullscreen", data.getString("fromPlayerId"));
     assertEquals("blockedByStreamLimit", data.getString("error"));
+  }
+
+  @Test
+  public void errorListenerData_coercesUnknownDiscriminator() {
+    JSObject data = VideoDrm.errorListenerData("p1", "licenseDenied");
+    assertEquals("p1", data.getString("fromPlayerId"));
+    assertEquals(VideoDrm.ERROR_UNKNOWN, data.getString("error"));
   }
 
   @Test

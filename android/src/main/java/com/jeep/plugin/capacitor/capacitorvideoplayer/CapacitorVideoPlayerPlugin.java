@@ -1459,7 +1459,10 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
         VideoDrm.OpenAttempt drmAttempt = VideoDrm.open(
             drmOptions,
             error ->
-                notifyListeners("jeepCapVideoPlayerError", VideoDrm.errorListenerData(errorPlayerId, error))
+                notifyListeners(
+                    "jeepCapVideoPlayerError",
+                    VideoDrm.errorListenerData(errorPlayerId, VideoDrm.typedError(error))
+                )
         );
         if (VideoDrm.CODE_NO_PROVIDER.equals(drmAttempt.failureCode)) {
             ret.put("result", false);

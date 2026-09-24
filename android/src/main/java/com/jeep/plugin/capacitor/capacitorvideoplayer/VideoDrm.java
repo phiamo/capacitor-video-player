@@ -45,13 +45,40 @@ public final class VideoDrm {
     if (registered == null) {
       return OpenAttempt.noProvider();
     }
-    return OpenAttempt.ok(registered.open(drm, onError));
+    Consumer<String> typedOnError = error -> {
+      if (onError != null) {
+        onError.accept(typedError(error));
+      }
+    };
+    try {
+      VideoDrmSession session = registered.open(drm, typedOnError);
+      if (session == null) {
+        return OpenAttempt.noProvider();
+      }
+      return OpenAttempt.ok(session);
+    } catch (RuntimeException e) {
+      typedOnError.accept(ERROR_UNKNOWN);
+      return OpenAttempt.noProvider();
+    }
+  }
+
+  public static String typedError(String error) {
+    if (
+      ERROR_BLOCKED_BY_STREAM_LIMIT.equals(error) ||
+      ERROR_NOT_ENTITLED.equals(error) ||
+      ERROR_EXPIRED.equals(error) ||
+      ERROR_NETWORK.equals(error) ||
+      ERROR_UNKNOWN.equals(error)
+    ) {
+      return error;
+    }
+    return ERROR_UNKNOWN;
   }
 
   public static JSObject errorListenerData(String fromPlayerId, String error) {
     JSObject data = new JSObject();
     data.put("fromPlayerId", fromPlayerId);
-    data.put("error", error);
+    data.put("error", typedError(error));
     return data;
   }
 
