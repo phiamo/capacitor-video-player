@@ -157,6 +157,16 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func initPlayer(_ call: CAPPluginCall) {
         self.call = call
         
+        if call.getObject("drm") != nil {
+            call.resolve([
+                "result": false,
+                "method": "initPlayer",
+                "code": "notSupported",
+                "message": "DRM not supported on this platform yet"
+            ])
+            return
+        }
+
         // Reset dismissal state for new player
         self.isPlayerDismissed = false
         

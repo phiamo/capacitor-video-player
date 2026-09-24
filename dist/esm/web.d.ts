@@ -163,3 +163,5 @@ export declare class CapacitorVideoPlayerWeb extends WebPlugin implements Capaci
     private addListeners;
     private removeListeners;
 }
+/** iOS/web refuse `drm` before creating a player (Story 57.4). */
+export declare function webDrmNotSupported(options: capVideoPlayerOptions): capVideoPlayerResult | null;

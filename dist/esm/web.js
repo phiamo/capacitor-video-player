@@ -75,6 +75,10 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
                 message: 'Must provide a capVideoPlayerOptions object',
             });
         }
+        const drmBlocked = webDrmNotSupported(options);
+        if (drmBlocked != null) {
+            return Promise.resolve(drmBlocked);
+        }
         this.mode = options.mode ? options.mode : '';
         if (this.mode == null || this.mode.length === 0) {
             return Promise.resolve({
@@ -907,5 +911,17 @@ export class CapacitorVideoPlayerWeb extends WebPlugin {
         document.removeEventListener('videoPlayerSubtitleChange', this._onVideoPlayerSubtitleChange, false);
         this._documentListenersAttached = false;
     }
+}
+/** iOS/web refuse `drm` before creating a player (Story 57.4). */
+export function webDrmNotSupported(options) {
+    if (options.drm == null) {
+        return null;
+    }
+    return {
+        result: false,
+        method: 'initPlayer',
+        code: 'notSupported',
+        message: 'DRM not supported on this platform yet',
+    };
 }
 //# sourceMappingURL=web.js.map

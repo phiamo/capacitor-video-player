@@ -13,6 +13,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 import androidx.fragment.app.Fragment;
+import androidx.media3.common.util.UnstableApi;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -36,6 +37,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+@UnstableApi
 @CapacitorPlugin(
     name = "CapacitorVideoPlayer",
     permissions = {
@@ -95,6 +97,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
     private List<SubtitleTrack> subtitleTracks = new ArrayList<>();
     private String selectedSubtitleId = null;
     private int positionUpdateInterval = 5;
+    private JSObject drmOptions;
     private final JSObject ret = new JSObject();
 
 
@@ -184,6 +187,9 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
         this.call = call;
         ret.put("method", "initPlayer");
         ret.put("result", false);
+        ret.remove("code");
+        ret.remove("message");
+        drmOptions = null;
         // Check if running on a TV Device
         isTV = isDeviceTV(context);
         Log.d(TAG, "**** isTV " + isTV + " ****");
@@ -245,6 +251,14 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 call.resolve(ret);
                 return;
             }
+            JSObject drm = call.getObject("drm");
+            if (drm != null && VideoDrm.getProvider() == null) {
+                ret.put("result", false);
+                ret.put("code", VideoDrm.CODE_NO_PROVIDER);
+                call.resolve(ret);
+                return;
+            }
+            drmOptions = drm;
             // Handle subtitle tracks (new API with backward compatibility)
             subtitleTracks.clear();
             if (call.getData().has("subtitles")) {
@@ -1441,6 +1455,20 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
     ) {
         Log.v(TAG, "§§§§ createFullScreenFragment chromecast: " + chromecast);
 
+        final String errorPlayerId = playerId;
+        VideoDrm.OpenAttempt drmAttempt = VideoDrm.open(
+            drmOptions,
+            error ->
+                notifyListeners("jeepCapVideoPlayerError", VideoDrm.errorListenerData(errorPlayerId, error))
+        );
+        if (VideoDrm.CODE_NO_PROVIDER.equals(drmAttempt.failureCode)) {
+            ret.put("result", false);
+            ret.put("code", VideoDrm.CODE_NO_PROVIDER);
+            call.resolve(ret);
+            return;
+        }
+        final VideoDrmSession drmSession = drmAttempt.session;
+
         fsFragment =
             implementation.createFullScreenFragment(
                 videoPath,
@@ -1466,7 +1494,8 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 videoId,
                 subtitleTracks,
                 selectedSubtitleId,
-                positionUpdateInterval
+                positionUpdateInterval,
+                drmSession
             );
         bridge
             .getActivity()
@@ -1478,6 +1507,12 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         ret.put("method", "initPlayer");
                         FrameLayout frameLayoutView = getBridge().getActivity().findViewById(frameLayoutViewId);
                         if (frameLayoutView != null) {
+                            if (drmSession != null) {
+                                drmSession.release();
+                            }
+                            if (fsFragment != null) {
+                                fsFragment.drmSession = null;
+                            }
                             ret.put("result", false);
                             ret.put("message", "FrameLayout for ExoPlayer already exists");
                         } else {

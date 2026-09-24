@@ -11,9 +11,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Single factory for video {@link MediaItem} instances. Story 55.1 — no DRM; later epics attach
- * {@link MediaItem.DrmConfiguration} here only. Story 55.2 — sidecar tracks are {@link
- * MediaItem.SubtitleConfiguration} on this item.
+ * Single factory for video {@link MediaItem} instances. Story 57.4 — optional {@link
+ * VideoDrmSession#applyDrm} is the only place Widevine {@link MediaItem.DrmConfiguration}
+ * attaches. Story 55.2 — sidecar tracks are {@link MediaItem.SubtitleConfiguration} on this item.
  */
 @UnstableApi
 public final class VideoMediaItemFactory {
@@ -33,6 +33,15 @@ public final class VideoMediaItemFactory {
   }
 
   public static MediaItem fromUriAndType(Uri uri, String vType, List<SubtitleTrack> tracks) {
+    return fromUriAndType(uri, vType, tracks, null);
+  }
+
+  public static MediaItem fromUriAndType(
+    Uri uri,
+    String vType,
+    List<SubtitleTrack> tracks,
+    VideoDrmSession drmSession
+  ) {
     MediaItem.Builder builder = new MediaItem.Builder().setUri(uri);
     if (vType != null) {
       switch (vType) {
@@ -53,6 +62,9 @@ public final class VideoMediaItemFactory {
     List<MediaItem.SubtitleConfiguration> configs = toSubtitleConfigurations(tracks);
     if (!configs.isEmpty()) {
       builder.setSubtitleConfigurations(configs);
+    }
+    if (drmSession != null) {
+      drmSession.applyDrm(builder);
     }
     return builder.build();
   }

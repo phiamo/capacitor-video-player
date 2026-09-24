@@ -73,6 +73,18 @@ No Capacitor plugin configuration is required for basic playback.
 
 **Android Chromecast:** your host app must set Cast options in `AndroidManifest.xml` (see [docs/API.md](./docs/API.md#chromecast-support)). **Android 13+:** declare `POST_NOTIFICATIONS` in the host manifest and request at runtime if you rely on lock-screen / media notifications together with other plugins.
 
+### Protected playback (Android)
+
+This plugin does **not** pin `drm-kit`. The host app that needs Widevine adds `drm-kit` itself and registers a provider at launch from the app `Application` class (not a plugin Gradle / `Package.swift` dependency):
+
+```java
+VideoDrm.setProvider((drm, onError) -> {
+  // Story 57.6: wrap drm-kit WidevineSession. Token URL, heartbeat URL, and Bearer live here.
+});
+```
+
+`initPlayer` `{ drm }` without a registered provider returns `{ result: false, code: "noProvider" }` and does not create a player. iOS and web refuse `{ drm }` with `{ result: false, code: "notSupported", message: "DRM not supported on this platform yet" }`. Typed provider errors are emitted as `jeepCapVideoPlayerError` `{ fromPlayerId, error }`. Chromecast `MediaItem`s are unchanged (no DRM).
+
 ## Upgrading a host app (8.3.0)
 
 **Capacitor / JavaScript:** no changes — `initPlayer`, play/pause/seek, subtitle methods, and `jeepCapVideoPlayer*` events are unchanged from 8.2.x.

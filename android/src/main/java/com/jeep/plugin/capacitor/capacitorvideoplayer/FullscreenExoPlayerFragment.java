@@ -133,6 +133,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
   public List<SubtitleTrack> subtitleTracks;
   public String selectedSubtitleId;
   public int positionUpdateInterval = 5; // Default 5 seconds
+  public VideoDrmSession drmSession;
 
   private static final String TAG = FullscreenExoPlayerFragment.class.getName();
   public static final long UNKNOWN_TIME = -1L;
@@ -908,6 +909,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
   public void releasePlayer() {
     stopPositionUpdates();
     isVideoPlaying = false;
+    if (drmSession != null) {
+      drmSession.release();
+      drmSession = null;
+    }
     if (player != null) {
       playWhenReady = player.getPlayWhenReady();
       playbackPosition = player.getCurrentPosition();
@@ -1057,6 +1062,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
       attachDebugPlaybackLogging(player);
       player.setMediaSource(mediaSource);
       player.prepare();
+      if (drmSession != null) {
+        drmSession.start();
+      }
       if (loopOnEnd) {
         player.setRepeatMode(player.REPEAT_MODE_ONE);
       } else {
@@ -1136,10 +1144,18 @@ public class FullscreenExoPlayerFragment extends Fragment {
     return new androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory);
   }
 
+  private DefaultMediaSourceFactory drmAwareMediaSourceFactory(DataSource.Factory dataSourceFactory) {
+    DefaultMediaSourceFactory factory = new DefaultMediaSourceFactory(dataSourceFactory);
+    if (drmSession != null) {
+      factory.setDrmSessionManagerProvider(unused -> drmSession.getDrmSessionManager());
+    }
+    return factory;
+  }
+
   private MediaSource buildAssetMediaSource(Uri uri) {
     DataSource.Factory dataSourceFactory = createDefaultDataSourceFactory();
-    return new DefaultMediaSourceFactory(dataSourceFactory)
-      .createMediaSource(VideoMediaItemFactory.fromUri(uri, sidecarSubtitleTracks()));
+    return drmAwareMediaSourceFactory(dataSourceFactory)
+      .createMediaSource(VideoMediaItemFactory.fromUriAndType(uri, null, sidecarSubtitleTracks(), drmSession));
   }
 
   /**
@@ -1176,8 +1192,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
     DataSource.Factory dataSourceFactory = new androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory);
-    MediaItem mediaItem = VideoMediaItemFactory.fromUriAndType(uri, vType, sidecarSubtitleTracks());
-    return new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem);
+    MediaItem mediaItem = VideoMediaItemFactory.fromUriAndType(uri, vType, sidecarSubtitleTracks(), drmSession);
+    return drmAwareMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem);
   }
 
   /**
