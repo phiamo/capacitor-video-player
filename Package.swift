@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "BrylsherbertCapacitorVideoPlayer",
+    name: "DwbnCapacitorVideoPlayer",
     platforms: [.iOS(.v18)],
     products: [
         .library(
-            name: "BrylsherbertCapacitorVideoPlayer",
+            name: "DwbnCapacitorVideoPlayer",
             targets: ["CapacitorVideoPlayerPlugin"])
     ],
     dependencies: [

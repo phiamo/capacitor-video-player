@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Published as `@dwbn/capacitor-video-player`.** Before, this fork was used from git under the upstream name `@brylsherbert/capacitor-video-player`. To switch, replace the dependency, update imports, and run `npx cap sync`.
+- **iOS:** the CocoaPods pod and the Swift Package product are renamed `BrylsherbertCapacitorVideoPlayer` → `DwbnCapacitorVideoPlayer`. The Capacitor plugin name (`CapacitorVideoPlayer`), the JS API, the events and the Android namespace are unchanged.
+
+### Documentation
+- readme shortened to an overview. Guides moved to `docs/`: installation, usage, DRM, audio↔video handoff, upgrading, legacy versions, and history & credits (founder Jean Pierre Quéau → Harmon Wood → Bryl Sherbert → phiamo).
+- `docs/API.md` regenerated with docgen. It was missing `getLastKnownPosition`, the DRM options and the newer listeners.
+
 ## [8.3.0] - 2026-09-19
 
 ### Changed

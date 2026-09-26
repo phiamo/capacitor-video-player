@@ -136,6 +136,22 @@ export interface CapacitorVideoPlayerPlugin {
      *
      */
     getSelectedSubtitleTrack(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /** Player is ready to play. */
+    addListener(eventName: 'jeepCapVideoPlayerReady', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Playback started or resumed. */
+    addListener(eventName: 'jeepCapVideoPlayerPlay', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Playback paused. */
+    addListener(eventName: 'jeepCapVideoPlayerPause', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Video reached its end. */
+    addListener(eventName: 'jeepCapVideoPlayerEnded', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Fullscreen player closed; `currentTime` is the head at exit. */
+    addListener(eventName: 'jeepCapVideoPlayerExit', listenerFunc: (data: capExitListener) => void): Promise<PluginListenerHandle>;
+    /** Periodic playback head while playing. */
+    addListener(eventName: 'jeepCapVideoPlayerPositionUpdate', listenerFunc: (data: capPositionUpdateListener) => void): Promise<PluginListenerHandle>;
+    /** A seek completed. */
+    addListener(eventName: 'jeepCapVideoPlayerSeek', listenerFunc: (data: capSeekCompletedListener) => void): Promise<PluginListenerHandle>;
+    /** The user picked another subtitle track (or turned subtitles off). */
+    addListener(eventName: 'jeepCapVideoPlayerSubtitleChange', listenerFunc: (data: capSubtitleChangeListener) => void): Promise<PluginListenerHandle>;
     addListener(eventName: 'jeepCapVideoPlayerBackground', listenerFunc: (data: capVideoPlayerBackgroundData) => void): Promise<PluginListenerHandle>;
     addListener(eventName: 'jeepCapVideoPlayerPipStart', listenerFunc: (data: capVideoPlayerPipListener) => void): Promise<PluginListenerHandle>;
     addListener(eventName: 'jeepCapVideoPlayerPipStop', listenerFunc: (data: capVideoPlayerPipListener) => void): Promise<PluginListenerHandle>;

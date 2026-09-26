@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-**@brylsherbert/capacitor-video-player** (v7.0.32) is a Capacitor 7 plugin providing cross-platform video playback with native implementations for iOS (AVPlayer), Android (ExoPlayer), and Web (HTML5 + HLS.js). The plugin supports fullscreen playback on all platforms and embedded playback on Web/Electron.
+**@dwbn/capacitor-video-player** (v7.0.32) is a Capacitor 7 plugin providing cross-platform video playback with native implementations for iOS (AVPlayer), Android (ExoPlayer), and Web (HTML5 + HLS.js). The plugin supports fullscreen playback on all platforms and embedded playback on Web/Electron.
 
 ## Architecture Overview
 
@@ -371,7 +371,7 @@ Then handle in `initPlayer` implementations across all platforms.
 - External dependencies: `@capacitor/core`, `hls.js`
 
 ### Native Builds
-- **iOS**: CocoaPods via `BrylsherbertCapacitorVideoPlayer.podspec`
+- **iOS**: CocoaPods via `DwbnCapacitorVideoPlayer.podspec`
 - **Android**: Gradle build system
 
 ## Dependencies

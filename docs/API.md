@@ -11,6 +11,7 @@
 * [`pause(...)`](#pause)
 * [`getDuration(...)`](#getduration)
 * [`getCurrentTime(...)`](#getcurrenttime)
+* [`getLastKnownPosition(...)`](#getlastknownposition)
 * [`setCurrentTime(...)`](#setcurrenttime)
 * [`getVolume(...)`](#getvolume)
 * [`setVolume(...)`](#setvolume)
@@ -23,7 +24,24 @@
 * [`isControllerIsFullyVisible()`](#iscontrollerisfullyvisible)
 * [`exitPlayer()`](#exitplayer)
 * [`exitFullScreen(...)`](#exitfullscreen)
+* [`getSubtitleTracks(...)`](#getsubtitletracks)
+* [`selectSubtitleTrack(...)`](#selectsubtitletrack)
+* [`disableSubtitles(...)`](#disablesubtitles)
+* [`getSelectedSubtitleTrack(...)`](#getselectedsubtitletrack)
+* [`addListener('jeepCapVideoPlayerReady', ...)`](#addlistenerjeepcapvideoplayerready-)
+* [`addListener('jeepCapVideoPlayerPlay', ...)`](#addlistenerjeepcapvideoplayerplay-)
+* [`addListener('jeepCapVideoPlayerPause', ...)`](#addlistenerjeepcapvideoplayerpause-)
+* [`addListener('jeepCapVideoPlayerEnded', ...)`](#addlistenerjeepcapvideoplayerended-)
+* [`addListener('jeepCapVideoPlayerExit', ...)`](#addlistenerjeepcapvideoplayerexit-)
+* [`addListener('jeepCapVideoPlayerPositionUpdate', ...)`](#addlistenerjeepcapvideoplayerpositionupdate-)
+* [`addListener('jeepCapVideoPlayerSeek', ...)`](#addlistenerjeepcapvideoplayerseek-)
+* [`addListener('jeepCapVideoPlayerSubtitleChange', ...)`](#addlistenerjeepcapvideoplayersubtitlechange-)
+* [`addListener('jeepCapVideoPlayerBackground', ...)`](#addlistenerjeepcapvideoplayerbackground-)
+* [`addListener('jeepCapVideoPlayerPipStart', ...)`](#addlistenerjeepcapvideoplayerpipstart-)
+* [`addListener('jeepCapVideoPlayerPipStop', ...)`](#addlistenerjeepcapvideoplayerpipstop-)
+* [`addListener('jeepCapVideoPlayerError', ...)`](#addlistenerjeepcapvideoplayererror-)
 * [Interfaces](#interfaces)
+* [Type Aliases](#type-aliases)
 
 </docgen-index>
 * [Listeners](#listeners)
@@ -159,7 +177,7 @@ If you upgraded from **8.2.x**, replace `com.google.android.exoplayer2.ext.cast.
 
 Cast is initialized asynchronously inside the fullscreen player — you do **not** need `CastContext.getSharedInstance(this)` in `MainActivity`.
 
-**Upgrading from 8.2.x:** pin `media3Version = '1.11.1'` and force every `androidx.media3` module in the host Gradle (see [readme Upgrading a host app](../readme.md#upgrading-a-host-app-830)).
+**Upgrading from 8.2.x:** pin `media3Version = '1.11.1'` and force every `androidx.media3` module in the host Gradle (see [Upgrading to 8.3.0](./upgrading.md#to-830-media3)).
 
 ## Methods
 
@@ -275,6 +293,24 @@ getCurrentTime(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult
 ```
 
 Get the current time of the current video from a given playerId
+
+| Param         | Type                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
+
+--------------------
+
+
+### getLastKnownPosition(...)
+
+```typescript
+getLastKnownPosition(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+```
+
+Last playback head (seconds) persisted on native when position ticks fire;
+survives WebView suspension (Epic 45 / PR-2).
 
 | Param         | Type                                                                        |
 | ------------- | --------------------------------------------------------------------------- |
@@ -456,7 +492,7 @@ Exit player
 --------------------
 
 
-### exitFullScreen()
+### exitFullScreen(...)
 
 ```typescript
 exitFullScreen(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
@@ -464,7 +500,290 @@ exitFullScreen(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult
 
 Exit fullscreen mode for a given playerId
 
+| Param         | Type                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
+
 **Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
+
+--------------------
+
+
+### getSubtitleTracks(...)
+
+```typescript
+getSubtitleTracks(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+```
+
+Get available subtitle tracks for a player
+
+| Param         | Type                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
+
+--------------------
+
+
+### selectSubtitleTrack(...)
+
+```typescript
+selectSubtitleTrack(options: capSubtitleTrackOptions) => Promise<capVideoPlayerResult>
+```
+
+Select a subtitle track by ID
+
+| Param         | Type                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#capsubtitletrackoptions">capSubtitleTrackOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
+
+--------------------
+
+
+### disableSubtitles(...)
+
+```typescript
+disableSubtitles(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+```
+
+Disable subtitles (hide current track)
+
+| Param         | Type                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
+
+--------------------
+
+
+### getSelectedSubtitleTrack(...)
+
+```typescript
+getSelectedSubtitleTrack(options: capVideoPlayerIdOptions) => Promise<capVideoPlayerResult>
+```
+
+Get currently selected subtitle track
+
+| Param         | Type                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| **`options`** | <code><a href="#capvideoplayeridoptions">capVideoPlayerIdOptions</a></code> |
+
+**Returns:** <code>Promise&lt;<a href="#capvideoplayerresult">capVideoPlayerResult</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerReady', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerReady', listenerFunc: (data: capVideoListener) => void) => Promise<PluginListenerHandle>
+```
+
+Player is ready to play.
+
+| Param              | Type                                                                             |
+| ------------------ | -------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerReady'</code>                                           |
+| **`listenerFunc`** | <code>(data: <a href="#capvideolistener">capVideoListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerPlay', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerPlay', listenerFunc: (data: capVideoListener) => void) => Promise<PluginListenerHandle>
+```
+
+Playback started or resumed.
+
+| Param              | Type                                                                             |
+| ------------------ | -------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerPlay'</code>                                            |
+| **`listenerFunc`** | <code>(data: <a href="#capvideolistener">capVideoListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerPause', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerPause', listenerFunc: (data: capVideoListener) => void) => Promise<PluginListenerHandle>
+```
+
+Playback paused.
+
+| Param              | Type                                                                             |
+| ------------------ | -------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerPause'</code>                                           |
+| **`listenerFunc`** | <code>(data: <a href="#capvideolistener">capVideoListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerEnded', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerEnded', listenerFunc: (data: capVideoListener) => void) => Promise<PluginListenerHandle>
+```
+
+Video reached its end.
+
+| Param              | Type                                                                             |
+| ------------------ | -------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerEnded'</code>                                           |
+| **`listenerFunc`** | <code>(data: <a href="#capvideolistener">capVideoListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerExit', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerExit', listenerFunc: (data: capExitListener) => void) => Promise<PluginListenerHandle>
+```
+
+Fullscreen player closed; `currentTime` is the head at exit.
+
+| Param              | Type                                                                           |
+| ------------------ | ------------------------------------------------------------------------------ |
+| **`eventName`**    | <code>'jeepCapVideoPlayerExit'</code>                                          |
+| **`listenerFunc`** | <code>(data: <a href="#capexitlistener">capExitListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerPositionUpdate', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerPositionUpdate', listenerFunc: (data: capPositionUpdateListener) => void) => Promise<PluginListenerHandle>
+```
+
+Periodic playback head while playing.
+
+| Param              | Type                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerPositionUpdate'</code>                                                    |
+| **`listenerFunc`** | <code>(data: <a href="#cappositionupdatelistener">capPositionUpdateListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerSeek', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerSeek', listenerFunc: (data: capSeekCompletedListener) => void) => Promise<PluginListenerHandle>
+```
+
+A seek completed.
+
+| Param              | Type                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| **`eventName`**    | <code>'jeepCapVideoPlayerSeek'</code>                                                            |
+| **`listenerFunc`** | <code>(data: <a href="#capseekcompletedlistener">capSeekCompletedListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerSubtitleChange', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerSubtitleChange', listenerFunc: (data: capSubtitleChangeListener) => void) => Promise<PluginListenerHandle>
+```
+
+The user picked another subtitle track (or turned subtitles off).
+
+| Param              | Type                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerSubtitleChange'</code>                                                    |
+| **`listenerFunc`** | <code>(data: <a href="#capsubtitlechangelistener">capSubtitleChangeListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerBackground', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerBackground', listenerFunc: (data: capVideoPlayerBackgroundData) => void) => Promise<PluginListenerHandle>
+```
+
+| Param              | Type                                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerBackground'</code>                                                              |
+| **`listenerFunc`** | <code>(data: <a href="#capvideoplayerbackgrounddata">capVideoPlayerBackgroundData</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerPipStart', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerPipStart', listenerFunc: (data: capVideoPlayerPipListener) => void) => Promise<PluginListenerHandle>
+```
+
+| Param              | Type                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerPipStart'</code>                                                          |
+| **`listenerFunc`** | <code>(data: <a href="#capvideoplayerpiplistener">capVideoPlayerPipListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerPipStop', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerPipStop', listenerFunc: (data: capVideoPlayerPipListener) => void) => Promise<PluginListenerHandle>
+```
+
+| Param              | Type                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerPipStop'</code>                                                           |
+| **`listenerFunc`** | <code>(data: <a href="#capvideoplayerpiplistener">capVideoPlayerPipListener</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
+
+--------------------
+
+
+### addListener('jeepCapVideoPlayerError', ...)
+
+```typescript
+addListener(eventName: 'jeepCapVideoPlayerError', listenerFunc: (data: capVideoPlayerDrmErrorData) => void) => Promise<PluginListenerHandle>
+```
+
+Typed DRM playback error from the host-registered provider (Android).
+Discriminator is exactly one of the five strings in <a href="#capvideoplayerdrmerror">`capVideoPlayerDrmError`</a>.
+
+| Param              | Type                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| **`eventName`**    | <code>'jeepCapVideoPlayerError'</code>                                                               |
+| **`listenerFunc`** | <code>(data: <a href="#capvideoplayerdrmerrordata">capVideoPlayerDrmErrorData</a>) =&gt; void</code> |
+
+**Returns:** <code>Promise&lt;<a href="#pluginlistenerhandle">PluginListenerHandle</a>&gt;</code>
 
 --------------------
 
@@ -474,12 +793,13 @@ Exit fullscreen mode for a given playerId
 
 #### capVideoPlayerResult
 
-| Prop          | Type                 | Description                                   |
-| ------------- | -------------------- | --------------------------------------------- |
-| **`result`**  | <code>boolean</code> | result set to true when successful else false |
-| **`method`**  | <code>string</code>  | method name                                   |
-| **`value`**   | <code>any</code>     | value returned                                |
-| **`message`** | <code>string</code>  | message string                                |
+| Prop          | Type                 | Description                                                                                                                                   |
+| ------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`result`**  | <code>boolean</code> | result set to true when successful else false                                                                                                 |
+| **`method`**  | <code>string</code>  | method name                                                                                                                                   |
+| **`value`**   | <code>any</code>     | value returned                                                                                                                                |
+| **`message`** | <code>string</code>  | message string                                                                                                                                |
+| **`code`**    | <code>string</code>  | Machine-readable failure: `noProvider` (Android, drm set but host did not register a provider) or `notSupported` (iOS/web when `drm` is set). |
 
 
 #### capEchoOptions
@@ -491,30 +811,50 @@ Exit fullscreen mode for a given playerId
 
 #### capVideoPlayerOptions
 
-| Prop                  | Type                                                        | Description                                                                                                                                                 |
-| --------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`mode`**            | <code>string</code>                                         | Player mode - "fullscreen" - "embedded" (Web only)                                                                                                          |
-| **`url`**             | <code>string</code>                                         | The url of the video to play                                                                                                                                |
-| **`subtitle`**        | <code>string</code>                                         | The url of subtitle associated with the video                                                                                                               |
-| **`language`**        | <code>string</code>                                         | The language of subtitle see https://github.com/libyal/libfwnt/wiki/Language-Code-identifiers                                                               |
-| **`subtitleOptions`** | <code><a href="#subtitleoptions">SubTitleOptions</a></code> | SubTitle Options                                                                                                                                            |
-| **`playerId`**        | <code>string</code>                                         | Id of DIV Element parent of the player                                                                                                                      |
-| **`rate`**            | <code>number</code>                                         | Initial playing rate                                                                                                                                        |
-| **`exitOnEnd`**       | <code>boolean</code>                                        | Exit on VideoEnd (iOS, Android) default: true                                                                                                               |
-| **`loopOnEnd`**       | <code>boolean</code>                                        | Loop on VideoEnd when exitOnEnd false (iOS, Android) default: false                                                                                         |
-| **`pipEnabled`**      | <code>boolean</code>                                        | Picture in Picture Enable (iOS, Android) default: true                                                                                                      |
-| **`bkmodeEnabled`**   | <code>boolean</code>                                        | Background Mode Enable (iOS, Android) default: true                                                                                                         |
-| **`showControls`**    | <code>boolean</code>                                        | Show Controls Enable (iOS, Android) default: true                                                                                                           |
-| **`displayMode`**     | <code>string</code>                                         | Display Mode ["all", "portrait", "landscape"] (iOS, Android) default: "all"                                                                                 |
-| **`componentTag`**    | <code>string</code>                                         | Component Tag or DOM Element Tag (React app)                                                                                                                |
-| **`width`**           | <code>number</code>                                         | Player Width (mode "embedded" only)                                                                                                                         |
-| **`height`**          | <code>number</code>                                         | Player height (mode "embedded" only)                                                                                                                        |
-| **`headers`**         | <code>{ [key: string]: string; }</code>                     | Headers for the request (iOS, Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                             |
-| **`title`**           | <code>string</code>                                         | Title shown in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                |
-| **`smallTitle`**      | <code>string</code>                                         | Subtitle shown below the title in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                             |
-| **`accentColor`**     | <code>string</code>                                         | ExoPlayer Progress Bar and Spinner color (Android) by Manuel García Marín (https://github.com/PhantomPainX) Must be a valid hex color code default: #FFFFFF |
-| **`chromecast`**      | <code>boolean</code>                                        | Chromecast enable/disable (Android) by Manuel García Marín (https://github.com/PhantomPainX) default: true                                                  |
-| **`artwork`**         | <code>string</code>                                         | Artwork url to be shown in Chromecast player by Manuel García Marín (https://github.com/PhantomPainX) default: ""                                           |
+| Prop                         | Type                                                              | Description                                                                                                                                                                                                                                                                |
+| ---------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`mode`**                   | <code>string</code>                                               | Player mode - "fullscreen" - "embedded" (Web only)                                                                                                                                                                                                                         |
+| **`url`**                    | <code>string</code>                                               | The url of the video to play                                                                                                                                                                                                                                               |
+| **`subtitle`**               | <code>string</code>                                               | The url of subtitle associated with the video                                                                                                                                                                                                                              |
+| **`language`**               | <code>string</code>                                               | The language of subtitle see https://github.com/libyal/libfwnt/wiki/Language-Code-identifiers                                                                                                                                                                              |
+| **`subtitles`**              | <code>SubtitleTrack[]</code>                                      | Multiple subtitle tracks Array of subtitle track definitions                                                                                                                                                                                                               |
+| **`selectedSubtitleId`**     | <code>string</code>                                               | Initial selected subtitle track ID If not specified, first track with isDefault=true is selected, or first track if none marked as default                                                                                                                                 |
+| **`subtitleOptions`**        | <code><a href="#subtitleoptions">SubTitleOptions</a></code>       | SubTitle Options Shared styling for all tracks (can be overridden per-track later)                                                                                                                                                                                         |
+| **`playerId`**               | <code>string</code>                                               | Id of DIV Element parent of the player                                                                                                                                                                                                                                     |
+| **`rate`**                   | <code>number</code>                                               | Initial playing rate                                                                                                                                                                                                                                                       |
+| **`exitOnEnd`**              | <code>boolean</code>                                              | Exit on VideoEnd (iOS, Android) default: true                                                                                                                                                                                                                              |
+| **`loopOnEnd`**              | <code>boolean</code>                                              | Loop on VideoEnd when exitOnEnd false (iOS, Android) default: false                                                                                                                                                                                                        |
+| **`pipEnabled`**             | <code>boolean</code>                                              | Picture in Picture Enable (iOS, Android) default: true                                                                                                                                                                                                                     |
+| **`bkmodeEnabled`**          | <code>boolean</code>                                              | Background Mode Enable (iOS, Android) default: true                                                                                                                                                                                                                        |
+| **`showControls`**           | <code>boolean</code>                                              | Show Controls Enable (iOS, Android) default: true                                                                                                                                                                                                                          |
+| **`displayMode`**            | <code>string</code>                                               | Display Mode ["all", "portrait", "landscape"] (iOS, Android) default: "all"                                                                                                                                                                                                |
+| **`componentTag`**           | <code>string</code>                                               | Component Tag or DOM Element Tag (React app)                                                                                                                                                                                                                               |
+| **`width`**                  | <code>number</code>                                               | Player Width (mode "embedded" only)                                                                                                                                                                                                                                        |
+| **`height`**                 | <code>number</code>                                               | Player height (mode "embedded" only)                                                                                                                                                                                                                                       |
+| **`headers`**                | <code>{ [key: string]: string; }</code>                           | Headers for the request (iOS, Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                                                                            |
+| **`title`**                  | <code>string</code>                                               | Title shown in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                                                                               |
+| **`smallTitle`**             | <code>string</code>                                               | Subtitle shown below the title in the player (Android) by Manuel García Marín (https://github.com/PhantomPainX)                                                                                                                                                            |
+| **`accentColor`**            | <code>string</code>                                               | ExoPlayer Progress Bar and Spinner color (Android) by Manuel García Marín (https://github.com/PhantomPainX) Must be a valid hex color code default: #FFFFFF                                                                                                                |
+| **`chromecast`**             | <code>boolean</code>                                              | Chromecast enable/disable (Android) by Manuel García Marín (https://github.com/PhantomPainX) default: true                                                                                                                                                                 |
+| **`artwork`**                | <code>string</code>                                               | Artwork url to be shown in Chromecast player by Manuel García Marín (https://github.com/PhantomPainX) default: ""                                                                                                                                                          |
+| **`positionUpdateInterval`** | <code>number</code>                                               | Position update interval in seconds for periodic position events default: 5                                                                                                                                                                                                |
+| **`seektime`**               | <code>number</code>                                               | Initial seek position in seconds applied before first play (iOS/Android). Prefer this over seeking after jeepCapVideoPlayerPlay to avoid races.                                                                                                                            |
+| **`drm`**                    | <code><a href="#capvideodrmoptions">capVideoDrmOptions</a></code> | Optional DRM descriptor fields (API names). Android attaches Widevine through a host-registered provider. Token URL, heartbeat URL, and Bearer live on that provider, not here. FairPlay fields may be present and are ignored on Android. iOS and web refuse this option. |
+
+
+#### SubtitleTrack
+
+Subtitle track definition
+
+| Prop            | Type                 | Description                                                                            |
+| --------------- | -------------------- | -------------------------------------------------------------------------------------- |
+| **`id`**        | <code>string</code>  | Unique identifier for the track                                                        |
+| **`url`**       | <code>string</code>  | Subtitle file URL/path                                                                 |
+| **`language`**  | <code>string</code>  | ISO 639-1 language code (e.g., "en", "es")                                             |
+| **`label`**     | <code>string</code>  | Display label (e.g., "English", "Spanish") If not provided, language code will be used |
+| **`mimeType`**  | <code>string</code>  | Optional MIME type override If not provided, will be detected from file extension      |
+| **`isDefault`** | <code>boolean</code> | Default track to select If multiple tracks have isDefault=true, first one is selected  |
+| **`isForced`**  | <code>boolean</code> | Forced subtitle track Forced tracks are always shown when available                    |
 
 
 #### SubTitleOptions
@@ -524,6 +864,30 @@ Exit fullscreen mode for a given playerId
 | **`foregroundColor`** | <code>string</code> | Foreground Color in RGBA (default rgba(255,255,255,1) |
 | **`backgroundColor`** | <code>string</code> | Background Color in RGBA (default rgba(0,0,0,1)       |
 | **`fontSize`**        | <code>number</code> | Font Size in pixels (default 16)                      |
+
+
+#### capVideoDrmOptions
+
+| Prop                         | Type                                                                      | Description                                                          |
+| ---------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **`widevineLicenseUrl`**     | <code>string</code>                                                       |                                                                      |
+| **`playbackSessionId`**      | <code>string</code>                                                       |                                                                      |
+| **`renewalCredential`**      | <code>string</code>                                                       |                                                                      |
+| **`streamLimit`**            | <code><a href="#capvideodrmstreamlimit">capVideoDrmStreamLimit</a></code> |                                                                      |
+| **`fairplayLicenseUrl`**     | <code>string</code>                                                       | Present on the descriptor; ignored on Android (FairPlay is Epic 58). |
+| **`fairplayCertificateUrl`** | <code>string</code>                                                       |                                                                      |
+
+
+#### capVideoDrmStreamLimit
+
+Optional `initPlayer` DRM fields. Names match the playback API.
+Token / heartbeat URLs and Bearer are supplied by the host provider (57.6).
+
+| Prop                           | Type                |
+| ------------------------------ | ------------------- |
+| **`mode`**                     | <code>string</code> |
+| **`renewalIntervalSeconds`**   | <code>number</code> |
+| **`heartbeatIntervalSeconds`** | <code>number</code> |
 
 
 #### capVideoPlayerIdOptions
@@ -563,6 +927,108 @@ Exit fullscreen mode for a given playerId
 | -------------- | ------------------- | -------------------------------------- |
 | **`playerId`** | <code>string</code> | Id of DIV Element parent of the player |
 | **`rate`**     | <code>number</code> | Rate value                             |
+
+
+#### capSubtitleTrackOptions
+
+| Prop           | Type                        | Description                                                      |
+| -------------- | --------------------------- | ---------------------------------------------------------------- |
+| **`playerId`** | <code>string</code>         | Id of DIV Element parent of the player                           |
+| **`trackId`**  | <code>string \| null</code> | ID of track to select, or null/empty string to disable subtitles |
+
+
+#### PluginListenerHandle
+
+| Prop         | Type                                      |
+| ------------ | ----------------------------------------- |
+| **`remove`** | <code>() =&gt; Promise&lt;void&gt;</code> |
+
+
+#### capVideoListener
+
+| Prop              | Type                | Description                                |
+| ----------------- | ------------------- | ------------------------------------------ |
+| **`playerId`**    | <code>string</code> | Id of DIV Element parent of the player     |
+| **`currentTime`** | <code>number</code> | Video current time when listener trigerred |
+
+
+#### capExitListener
+
+| Prop              | Type                                     | Description                                                               |
+| ----------------- | ---------------------------------------- | ------------------------------------------------------------------------- |
+| **`dismiss`**     | <code>boolean</code>                     | Dismiss value true or false                                               |
+| **`currentTime`** | <code>number</code>                      | Video current time when listener trigerred                                |
+| **`wasPlaying`**  | <code>string \| number \| boolean</code> | May arrive as boolean, 0/1, or 'true'/'false' depending on native bridge. |
+
+
+#### capPositionUpdateListener
+
+| Prop              | Type                | Description                                |
+| ----------------- | ------------------- | ------------------------------------------ |
+| **`playerId`**    | <code>string</code> | Id of DIV Element parent of the player     |
+| **`currentTime`** | <code>number</code> | Video current time when listener triggered |
+| **`duration`**    | <code>number</code> | Video duration in seconds                  |
+
+
+#### capSeekCompletedListener
+
+Payload for `jeepCapVideoPlayerSeek` (seek completed; not high-frequency).
+
+| Prop               | Type                | Description                          |
+| ------------------ | ------------------- | ------------------------------------ |
+| **`fromPlayerId`** | <code>string</code> |                                      |
+| **`fromPosition`** | <code>number</code> | Seconds before seek                  |
+| **`toPosition`**   | <code>number</code> | Seconds after seek                   |
+| **`duration`**     | <code>number</code> | Total duration in seconds when known |
+
+
+#### capSubtitleChangeListener
+
+Payload for `jeepCapVideoPlayerSubtitleChange` (vendor-neutral; map to analytics in the app).
+
+| Prop               | Type                | Description                                     |
+| ------------------ | ------------------- | ----------------------------------------------- |
+| **`fromPlayerId`** | <code>string</code> |                                                 |
+| **`language`**     | <code>string</code> | BCP 47 / IETF language tag, `"off"`, or `"und"` |
+| **`trackId`**      | <code>string</code> | Stable track id when available                  |
+
+
+#### capVideoPlayerBackgroundData
+
+Payload for the jeepCapVideoPlayerBackground event (Android: app backgrounded while playing).
+
+| Prop               | Type                | Description                                                  |
+| ------------------ | ------------------- | ------------------------------------------------------------ |
+| **`fromPlayerId`** | <code>string</code> | The player id that was playing when the app was backgrounded |
+| **`currentTime`**  | <code>number</code> | Playback position in seconds at the moment of backgrounding  |
+
+
+#### capVideoPlayerPipListener
+
+Payload for jeepCapVideoPlayerPipStart / jeepCapVideoPlayerPipStop (iOS/Android PiP lifecycle).
+
+| Prop               | Type                |
+| ------------------ | ------------------- |
+| **`fromPlayerId`** | <code>string</code> |
+| **`currentTime`**  | <code>number</code> |
+
+
+#### capVideoPlayerDrmErrorData
+
+| Prop               | Type                                                                      |
+| ------------------ | ------------------------------------------------------------------------- |
+| **`fromPlayerId`** | <code>string</code>                                                       |
+| **`error`**        | <code><a href="#capvideoplayerdrmerror">capVideoPlayerDrmError</a></code> |
+
+
+### Type Aliases
+
+
+#### capVideoPlayerDrmError
+
+Exactly the five discriminators from app `drm-playback-messages.ts`.
+
+<code>'blockedByStreamLimit' | 'notEntitled' | 'expired' | 'network' | 'unknown'</code>
 
 </docgen-api>
 

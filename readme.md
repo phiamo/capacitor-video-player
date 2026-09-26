@@ -1,262 +1,106 @@
 <p align="center"><br><img src="https://user-images.githubusercontent.com/236501/85893648-1c92e880-b7a8-11ea-926d-95355b8175c7.png" width="128" height="128" /></p>
 <h3 align="center">Video Player</h3>
-<p align="center"><strong><code>@brylsherbert/capacitor-video-player</code></strong></p>
-<br>
-<p align="center" style="font-size:32px;color:red"><strong>CAPACITOR 8</strong> — fork maintained for DWBN / phiamo (see <a href="./CHANGELOG.md">CHANGELOG</a> 8.3.0 Media3)</p><br>
-<br>
-<p align="center" style="font-size:20px;color:red"><a href="https://github.com/jepiqueau/capacitor-video-player/blob/master/docs/Jean_Pierre_Queau.md"><strong>Special note from Jean Pierre Quéau the original founder of this project.</strong></a></p>
-<br>
+<p align="center"><strong><code>@dwbn/capacitor-video-player</code></strong></p>
 <p align="center">
-  Capacitor Video Player Plugin is a custom Native Capacitor plugin to play a video 
-<br>
-  <strong>fullscreen</strong> on IOS, Android, Web and Electron platforms
-<br>
-  <strong>embedded</strong> on Web and Electron platforms
+  Native video for Capacitor 8: <strong>fullscreen</strong> on Android, iOS, Web and Electron, and <strong>embedded</strong> on Web and Electron.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/maintenance/yes/2024?style=flat-square" />
-  <a href="https://github.com/jepiqueau/capacitor-video-player/actions?query=workflow%3A%22CI%22"><img src="https://img.shields.io/github/workflow/status/jepiqueau/capacitor-video-player/CI?style=flat-square" /></a>
-  <a href="https://www.npmjs.com/package/capacitor-video-player"><img src="https://img.shields.io/npm/l/capacitor-video-player.svg?style=flat-square" /></a>
-<br>
-  <a href="https://www.npmjs.com/package/capacitor-video-player"><img src="https://img.shields.io/npm/dw/capacitor-video-player?style=flat-square" /></a>
-  <a href="https://www.npmjs.com/package/capacitor-video-player"><img src="https://img.shields.io/npm/v/capacitor-video-player?style=flat-square" /></a>
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-<a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-10-orange?style=flat-square" /></a>
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
-<br>
-<a href="https://ko-fi.com/W8V527Q5YX"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi" /></a>
+  <a href="https://www.npmjs.com/package/@dwbn/capacitor-video-player"><img src="https://img.shields.io/npm/v/@dwbn/capacitor-video-player?style=flat-square" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@dwbn/capacitor-video-player?style=flat-square" /></a>
+  <a href="https://capacitorjs.com"><img src="https://img.shields.io/badge/capacitor-8-119EFF?style=flat-square" /></a>
+  <a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-10-orange?style=flat-square" /></a>
 </p>
 
-## Maintainers
+> 📦 **Now on npm as `@dwbn/capacitor-video-player`.** This fork was previously used from git under the upstream name `@brylsherbert/capacitor-video-player`. The iOS pod is now `DwbnCapacitorVideoPlayer`. The repository stays here. [How to switch →](./docs/upgrading.md#brylsherbertcapacitor-video-player--dwbncapacitor-video-player)
 
-| Maintainer        | GitHub                                      | Social | Active |
-| ----------------- | ------------------------------------------- | ------ | ------ |
-| Harmon Wood       | [harmonwood](https://github.com/harmonwood) |        | ✅     |
-| Quéau Jean Pierre | [jepiqueau](https://github.com/jepiqueau)   |        | ❌     |
+Created by **Jean Pierre Quéau** in 2018, later maintained by **Harmon Wood** and **Bryl Sherbert**, and now maintained by [@phiamo](https://github.com/phiamo) for the DWBN apps. [History & credits →](./docs/history.md) · [A special note from the founder →](./docs/Jean_Pierre_Queau.md)
 
-## LATEST FOR CAPACITOR 8 (main)
+## Part of the DWBN media stack
 
-Peer dependency: `@capacitor/core >= 8.0.0`. Current release **8.3.0**.
+| | Project | What it does |
+|---|---|---|
+| 🎵 | [**capacitor-plugin-playlist**](https://github.com/phiamo/capacitor-plugin-playlist) · [`@dwbn/capacitor-plugin-playlist`](https://www.npmjs.com/package/@dwbn/capacitor-plugin-playlist) | Background audio playlists, lock screen, audio↔video handoff |
+| 🎬 | **capacitor-video-player** (this repo) · [`@dwbn/capacitor-video-player`](https://www.npmjs.com/package/@dwbn/capacitor-video-player) | Native fullscreen video with Media3 / AVPlayer, PiP, Chromecast and subtitles |
+| 🔐 | [**drm-kit**](https://github.com/phiamo/drm-kit) · Swift Package Manager / JitPack | Widevine session and DRM identifiers that the host app plugs into both plugins |
 
-## Browser Support
+The plugins work on their own. drm-kit is optional and is added by the **app**, never by a plugin. The [audio ↔ video handoff guide](https://github.com/phiamo/capacitor-plugin-playlist/blob/main/docs/video-handoff.md) shows all three working together.
 
-The plugin follows the guidelines from the `Capacitor Team`,
+## Platform support
 
-- [Capacitor Browser Support](https://capacitorjs.com/docs/v3/web#browser-support)
+| | Android | iOS | Web / Electron |
+|---|---|---|---|
+| Engine | androidx.media3 1.11.1 (ExoPlayer) | AVPlayer | HTML5 video + hls.js |
+| Fullscreen / embedded | ✅ / — | ✅ / — | ✅ / ✅ |
+| HLS, DASH | ✅ HLS, DASH, SmoothStreaming | ✅ HLS | ✅ HLS (hls.js) |
+| Subtitles | ✅ | ✅ native menu | — |
+| Picture-in-picture | ✅ | — | — |
+| Chromecast | ✅ Media3 Cast | — | — |
+| Lock screen / MediaSession | ✅ | ✅ artwork, title | — |
+| DRM | ✅ Widevine via [drm-kit](./docs/drm.md) | planned (FairPlay) | — |
+| Minimum | SDK 24 | iOS 18 | modern browsers |
 
-meaning that it will not work in IE11 without additional JavaScript transformations, e.g. with [Babel](https://babeljs.io/).
+The full method and listener matrix is in [usage.md](./docs/usage.md). Requires **Capacitor 8** (`@capacitor/core >= 8.0.0`).
 
-## Installation
+## Install
 
-  ```bash
-  npm install --save @brylsherbert/capacitor-video-player
-  npx cap sync
-  npx cap sync @capacitor-community/electron
-  ```
+```bash
+npm install @dwbn/capacitor-video-player
+npx cap sync
+```
 
-### Build
-  Then build YOUR_APPLICATION
+Android apps that use Chromecast, or that also use another Media3 library such as the playlist plugin, need a small setup. See [installation.md](./docs/installation.md).
 
-  ```
-  npm run build
-  npx cap copy
-  npx cap copy web
-  npx cap copy @capacitor-community/electron
-  npx cap open android
-  npx cap open ios
-  npx cap open @capacitor-community/electron
-  npx cap serve
-  ```
+## Quick start
 
-## Configuration
+```typescript
+import { CapacitorVideoPlayer } from '@dwbn/capacitor-video-player';
 
-No Capacitor plugin configuration is required for basic playback.
+await CapacitorVideoPlayer.addListener('jeepCapVideoPlayerExit', (e) => {
+  console.log('closed at', e.currentTime);
+});
 
-**Android Chromecast:** your host app must set Cast options in `AndroidManifest.xml` (see [docs/API.md](./docs/API.md#chromecast-support)). **Android 13+:** declare `POST_NOTIFICATIONS` in the host manifest and request at runtime if you rely on lock-screen / media notifications together with other plugins.
-
-### Protected playback (Android)
-
-This plugin does **not** pin `drm-kit`. The host app that needs Widevine adds `drm-kit` itself and registers a provider at launch from the app `Application` class (not a plugin Gradle / `Package.swift` dependency):
-
-```java
-VideoDrm.setProvider((drm, onError) -> {
-  // Story 57.6: wrap drm-kit WidevineSession. Token URL, heartbeat URL, and Bearer live here.
+await CapacitorVideoPlayer.initPlayer({
+  mode: 'fullscreen',
+  playerId: 'fullscreen',
+  url: 'https://example.com/video.m3u8',
+  title: 'My video',
 });
 ```
 
-`initPlayer` `{ drm }` without a registered provider returns `{ result: false, code: "noProvider" }` and does not create a player. iOS and web refuse `{ drm }` with `{ result: false, code: "notSupported", message: "DRM not supported on this platform yet" }`. Typed provider errors are emitted as `jeepCapVideoPlayerError` `{ fromPlayerId, error }`. Chromecast `MediaItem`s are unchanged (no DRM).
-
-## Upgrading a host app (8.3.0)
-
-**Capacitor / JavaScript:** no changes — `initPlayer`, play/pause/seek, subtitle methods, and `jeepCapVideoPlayer*` events are unchanged from 8.2.x.
-
-**Android host app:** update manifest/Gradle, then `npx cap sync android`.
-
-1. Bump to **8.3.0** (or newer) and run `npx cap sync android`.
-2. **Pin one Media3 version** — in `android/variables.gradle` (or `ext`):
-
-   ```gradle
-   media3Version = '1.11.1'
-   ```
-
-   In the root `android/build.gradle`:
-
-   ```gradle
-   allprojects {
-       configurations.configureEach {
-           resolutionStrategy {
-               eachDependency { details ->
-                   if (details.requested.group == 'androidx.media3') {
-                       details.useVersion rootProject.ext.media3Version
-                   }
-               }
-           }
-       }
-   }
-   ```
-
-3. **Do not** add `com.google.android.exoplayer:exoplayer-*:2.x` or copy old `play-services-cast-framework:21.2.0` into your app module. The plugin ships Media3 **1.11.1** and Cast framework **22.3.1**.
-4. **Chromecast manifest (required if you use Cast):** change the options provider class from ExoPlayer 2 to Media3:
-
-   `com.google.android.exoplayer2.ext.cast.DefaultCastOptionsProvider` → `androidx.media3.cast.DefaultCastOptionsProvider`
-
-   See [API.md Chromecast](./docs/API.md#chromecast-support). Do **not** add sync `CastContext.getSharedInstance(this)` in `MainActivity` — 8.3.0 initializes Cast inside the player.
-5. **Release builds with minify:** add to `proguard-rules.pro`:
-
-   ```proguard
-   -keep class androidx.media3.cast.DefaultCastOptionsProvider { *; }
-   ```
-
-   The class is referenced only from manifest meta-data and can be stripped by R8.
-6. **Android 13+ (API 33+):** `POST_NOTIFICATIONS` in the host manifest + runtime request when showing media notifications.
-7. If the app also uses `capacitor-plugin-playlist`, ship playlist **0.12.0** in the **same** release. Session ids: video `org.dwbn.video`, playlist `org.dwbn.playlist`.
-
-## Supported methods
-
-| Name                               | Android | iOS | Electron | Web |
-| :--------------------------------- | :------ | :-- | :------- | :-- |
-| initPlayer (mode fullscreen)       | ✅      | ✅  | ✅       | ✅  |
-| initPlayer (mode embedded)         | ❌      | ❌  | ✅       | ✅  |
-| initPlayer (url assets)            | ✅      | ✅  | ✅       | ✅  |
-| initPlayer (url internal)          | ✅      | ✅  | ❌       | ❌  |
-| initPlayer (url application/files) | ✅      | ✅  | ❌       | ❌  |
-| initPlayer (subtitles)             | ✅      | ✅  | ❌       | ❌  |
-| initPlayer (headers)               | ✅      | ✅  | ❌       | ❌  |
-| initPlayer (title)                 | ✅      | ✅  | ❌       | ❌  |
-| initPlayer (smallTitle)            | ✅      | ✅  | ❌       | ❌  |
-| initPlayer (accentColor)           | ✅      | ❌  | ❌       | ❌  |
-| initPlayer (chromecast)            | ✅      | ❌  | ❌       | ❌  |
-| initPlayer (artwork)               | ✅      | ✅  | ❌       | ❌  |
-| isPlaying                          | ✅      | ✅  | ✅       | ✅  |
-| play                               | ✅      | ✅  | ✅       | ✅  |
-| pause                              | ✅      | ✅  | ✅       | ✅  |
-| getCurrentTime                     | ✅      | ✅  | ✅       | ✅  |
-| setCurrentTime                     | ✅      | ✅  | ✅       | ✅  |
-| getDuration                        | ✅      | ✅  | ✅       | ✅  |
-| getMuted                           | ✅      | ✅  | ✅       | ✅  |
-| setMuted                           | ✅      | ✅  | ✅       | ✅  |
-| getVolume                          | ✅      | ✅  | ✅       | ✅  |
-| setVolume                          | ✅      | ✅  | ✅       | ✅  |
-| stopAllPlayers                     | ✅      | ✅  | ✅       | ✅  |
-| getRate                            | ✅      | ✅  | ✅       | ✅  |
-| setRate                            | ✅      | ✅  | ✅       | ✅  |
-| showController                     | ✅      | ❌  | ❌       | ❌  |
-| isControllerIsFullyVisible         | ✅      | ❌  | ❌       | ❌  |
-| exitPlayer                         | ✅      | ❌  | ❌       | ❌  |
-
-## Supported listeners
-
-| Name                    | Android | iOS | Electron | Web |
-| :---------------------- | :------ | :-- | :------- | :-- |
-| jeepCapVideoPlayerReady | ✅      | ✅  | ✅       | ✅  |
-| jeepCapVideoPlayerSeek  | ✅      | ✅  | ✅       | ✅  |
-| jeepCapVideoPlayerSubtitleChange | ✅      | ✅  | ✅       | ✅  |
-| jeepCapVideoPlayerPlay  | ✅      | ✅  | ✅       | ✅  |
-| jeepCapVideoPlayerPause | ✅      | ✅  | ✅       | ✅  |
-| jeepCapVideoPlayerEnded | ✅      | ✅  | ✅       | ✅  |
-| jeepCapVideoPlayerExit  | ✅      | ✅  | ✅       | ✅  |
-| jeepCapVideoPlayerPipStart | ✅   | ❌  | ❌       | ❌  |
-| jeepCapVideoPlayerPipStop  | ✅   | ❌  | ❌       | ❌  |
-
-### Seek / subtitle listener payloads
-
-- **`jeepCapVideoPlayerSeek`:** `fromPlayerId`, `fromPosition`, `toPosition` (seconds). `duration` is included only when the duration is known (finite / player ready).
-- **`jeepCapVideoPlayerSubtitleChange`:** `fromPlayerId`, `language` (IETF tag, `off`, or `und`). `trackId` is set when the app supplied manifest `subtitles[].id` can be matched (iOS native menu); otherwise omitted.
-
-### Verification
-
-- Automated: `npm test` runs `npm run build` (TypeScript + bundle). Manual matrix: device/simulator for seek + subtitles on iOS, Android, and Web.
-
 ## Documentation
 
-[API_Documentation](https://www.capacitorvideoplayer.com/API/)
+| Guide | |
+|---|---|
+| [Installation](./docs/installation.md) | Install, Chromecast, the Media3 version pin, Electron |
+| [Usage](./docs/usage.md) | Getting started, methods and listeners per platform, event payloads |
+| [API reference](./docs/API.md) | URLs and assets, subtitles, Chromecast, every method and type (generated) |
+| [Audio ↔ video handoff](./docs/video-handoff.md) | Working together with `@dwbn/capacitor-plugin-playlist` |
+| [Protected playback (DRM)](./docs/drm.md) | Widevine on Android with drm-kit, error codes |
+| [Upgrading](./docs/upgrading.md) | Moving to `@dwbn/…`, and to 8.3.0 (Media3) |
+| [Legacy versions](./docs/legacy.md) | Capacitor 2–6 era usage, tutorials and example apps |
+| [History & credits](./docs/history.md) | Maintainers through the years and all contributors |
+| [Changelog](./CHANGELOG.md) | Release notes |
 
-## Tutorials Blog
+## Versioning
 
- - [JeepQ Capacitor Plugin Tutorials](https://jepiqueau.github.io/)
+The major version follows Capacitor's major: **8.x targets Capacitor 8**, the same as [capacitor-plugin-playlist](https://github.com/phiamo/capacitor-plugin-playlist).
 
+## Maintainers
 
-## Applications demonstrating the use of the plugin
-
-### Capacitor 5 Apps
-
- - [ionic7-angular-videoplayer-app](https://github.com/jepiqueau/blog-tutorials-apps/tree/main/Videoplayer/ionic7-angular-videoplayer-app)
-
- - [vant-nuxt-videoplayer-app](https://github.com/jepiqueau/blog-tutorials-apps/tree/main/Videoplayer/vant-nuxt-videoplayer-app)
-
-
-### Application Starter (Not yet updated to 5.0.0)
-
-- [angular-video-player-app-starter](https://github.com/jepiqueau/angular-videoplayer-app-starter)
-
-- [react-video-player-app-starter](https://github.com/jepiqueau/react-video-player-app-starter)
-
-- [vite-react-videoplayer-app](https://github.com/jepiqueau/vite-react-videoplayer-app)
- 
-- [vue-videoplayer-app](https://github.com/jepiqueau/vue-videoplayer-app-starter)
-
-## Usage 2.4.7 (historical)
-
-Capacitor 2 API — **not** current. See [Usage_2.4.7.md](./docs/Usage_2.4.7.md) (archived).
-
-## Usage 3.x (historical)
-
-Capacitor 3 import patterns — **not** current. See [Usage_3.0.0.md](./docs/Usage_3.0.0.md) (archived). Install **`@brylsherbert/capacitor-video-player@8.3.0`** with Capacitor 8 plugin imports today.
-
-## Dependencies
-
-- hls.js for HLS videos on Web and Electron platforms
-- **Android:** [androidx.media3](https://developer.android.com/jetpack/androidx/releases/media3) **1.11.1** (`ExoPlayer`, `PlayerView`, `MediaSession`, `RemoteCastPlayer`) for HLS, DASH, SmoothStreaming, and progressive video. Do **not** add legacy `com.google.android.exoplayer:exoplayer-*:2.x` in your host app.
+| Maintainer | GitHub | Role | Active |
+| --- | --- | --- | --- |
+| Philipp Mohrenweiser | [phiamo](https://github.com/phiamo) | Maintainer of this fork (`@dwbn`) | ✅ |
+| Bryl Sherbert | [brylsherbert247](https://github.com/brylsherbert247) | Capacitor 7/8 fork (`@brylsherbert`) | — |
+| Harmon Wood | [harmonwood](https://github.com/harmonwood) | Maintainer of the original (6.x) | — |
+| Quéau Jean Pierre | [jepiqueau](https://github.com/jepiqueau) | Founder (1.x–5.x) | ❌ |
 
 ## Contributors ✨
 
-Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+Thank you to [everyone who contributed](./docs/history.md#contributors-) over the years: Jean Pierre Quéau, Yelhouti, Mamane10, Пронин Андрей KANekT, Michael Rieger, Manuel García Marín, Jelle Oppenhuis, fegauthier, Harmon Wood, Eduardo Roth, Bryl Sherbert and phiamo. This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind are welcome!
 
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<table>
-  <tr>
-    <td align="center"><a href="https://github.com/jepiqueau"><img src="https://avatars3.githubusercontent.com/u/16580653?v=4" width="100px;" alt=""/><br /><sub><b>Jean Pierre Quéau</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=jepiqueau" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/yelhouti"><img src="https://avatars.githubusercontent.com/u/5471639?v=4" width="100px;" alt=""/><br /><sub><b>Yelhouti</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=yelhouti" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/mamane10"><img src="https://avatars.githubusercontent.com/u/46500089?v=4" width="100px;" alt=""/><br /><sub><b>Mamane10</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=mamane10" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/KANekT"><img src="https://avatars.githubusercontent.com/u/580273?v=4" width="100px;" alt=""/><br /><sub><b>Пронин Андрей KANekT</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=KANekT" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/mueslirieger"><img src="https://avatars.githubusercontent.com/u/20973893?v=4" width="100px;" alt=""/><br /><sub><b>Michael Rieger</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=mueslirieger" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/PhantomPainX"><img src="https://avatars.githubusercontent.com/u/47803967?v=4" width="100px;" alt=""/><br /><sub><b>Manuel García Marín</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=PhantomPainX" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/j-oppenhuis"><img src="https://avatars.githubusercontent.com/u/46529655?v=4" width="100px;" alt=""/><br /><sub><b>Jelle Oppenhuis</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=j-oppenhuis" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/fegauthier"><img src="https://avatars.githubusercontent.com/u/12112673?v=4" width="100px;" alt=""/><br /><sub><b>fegauthier</b></sub></a><br /><a href="https://github.com/jepiqueau/capacitor-video-player/commits?author=fegauthier" title="Code">💻</a></td>
-    
-  </tr>
-  <tr>
-    <td align="center"><a href="https://github.com/harmonwood"><img src="https://avatars.githubusercontent.com/u/460843?v=4" width="100px;" alt="Harmon Wood"/><br /><sub><b>Harmon Wood</b></sub></a><br /><a href="https://github.com/harmonwood/capacitor-video-player/commits?author=harmonwood" title="Code">💻</a></td>
-    <td align="center"><a href="https://github.com/eduardoRoth"><img src="https://avatars.githubusercontent.com/u/5419161?v=4" width="100px;" alt="Eduardo Roth"/><br /><sub><b>Eduardo Roth</b></sub></a><br /><a href="https://github.com/harmonwood/capacitor-video-player/commits?author=eduardoroth" title="Code">💻</a></td>
-  </tr>
-</table>
+<a href="https://ko-fi.com/W8V527Q5YX"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi" /></a>
 
-<!-- markdownlint-enable -->
-<!-- prettier-ignore-end -->
+## License
 
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
-This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!
+[MIT](./LICENSE)
