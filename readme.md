@@ -24,6 +24,8 @@
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 <a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-10-orange?style=flat-square" /></a>
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
+<br>
+<a href="https://ko-fi.com/W8V527Q5YX"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi" /></a>
 </p>
 
 ## Maintainers
