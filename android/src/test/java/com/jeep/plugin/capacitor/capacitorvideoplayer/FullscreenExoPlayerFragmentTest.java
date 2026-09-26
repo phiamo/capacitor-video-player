@@ -69,6 +69,32 @@ public class FullscreenExoPlayerFragmentTest {
     assertTrue(source.contains("player.prepare();\n      if (drmSession != null) {\n        drmSession.start();"));
     assertTrue(source.contains("drmSession.release();"));
     assertTrue(source.indexOf("drmSession.release();") < source.indexOf("player.release();"));
+    assertTrue(source.contains("void setInitialPlaybackPositionMs(long positionMs)"));
+    assertTrue(source.contains("player.setMediaSource(mediaSource, playbackPosition)"));
+    assertFalse(source.contains("Toast.makeText(context, \"Video Url not found\""));
+    assertTrue(source.contains("onPlayerError"));
+    assertTrue(source.contains("ERROR_CODE_IO_BAD_HTTP_STATUS"));
+    assertTrue(source.contains("duration != C.TIME_UNSET"));
+  }
+
+  @Test
+  public void pluginSource_appliesInitPlayerSeektimeToFragment() throws IOException {
+    Path[] candidates = {
+      Paths.get("src/main/java/com/jeep/plugin/capacitor/capacitorvideoplayer/CapacitorVideoPlayerPlugin.java"),
+      Paths.get("../capacitor-video-player/android/src/main/java/com/jeep/plugin/capacitor/capacitorvideoplayer/CapacitorVideoPlayerPlugin.java"),
+      Paths.get("../../capacitor-video-player/android/src/main/java/com/jeep/plugin/capacitor/capacitorvideoplayer/CapacitorVideoPlayerPlugin.java"),
+    };
+    Path plugin = null;
+    for (Path path : candidates) {
+      if (Files.isRegularFile(path)) {
+        plugin = path;
+        break;
+      }
+    }
+    assertTrue(plugin != null);
+    String source = new String(Files.readAllBytes(plugin), StandardCharsets.UTF_8);
+    assertTrue(source.contains("call.getDouble(\"seektime\")"));
+    assertTrue(source.contains("setInitialPlaybackPositionMs(initialSeekMs)"));
   }
 
   private static Path fragmentSource() {

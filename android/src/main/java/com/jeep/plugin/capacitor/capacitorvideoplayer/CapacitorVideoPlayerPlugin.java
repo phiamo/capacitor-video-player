@@ -98,6 +98,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
     private String selectedSubtitleId = null;
     private int positionUpdateInterval = 5;
     private JSObject drmOptions;
+    private long initialSeekMs = 0;
     private final JSObject ret = new JSObject();
 
 
@@ -259,6 +260,11 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 return;
             }
             drmOptions = drm;
+            initialSeekMs = 0;
+            Double seekSeconds = call.getDouble("seektime");
+            if (seekSeconds != null && seekSeconds > 0 && Double.isFinite(seekSeconds)) {
+                initialSeekMs = Math.round(seekSeconds * 1000.0);
+            }
             // Handle subtitle tracks (new API with backward compatibility)
             subtitleTracks.clear();
             if (call.getData().has("subtitles")) {
@@ -1500,6 +1506,10 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                 positionUpdateInterval,
                 drmSession
             );
+        if (initialSeekMs > 0) {
+            fsFragment.setInitialPlaybackPositionMs(initialSeekMs);
+            Log.v(TAG, "initPlayer initialSeekMs=" + initialSeekMs);
+        }
         bridge
             .getActivity()
             .runOnUiThread(

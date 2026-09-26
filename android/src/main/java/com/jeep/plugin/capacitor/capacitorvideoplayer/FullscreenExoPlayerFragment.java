@@ -88,6 +88,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.VideoSize;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
@@ -152,6 +153,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private boolean isVideoPlaying = false;
   private int currentWindow = 0;
   private long playbackPosition = 0;
+
+  /**
+   * Applied on first STATE_READY {@code seekTo}. Must be set after construction;
+   * {@link #resetVariables()} zeros this on release.
+   */
+  void setInitialPlaybackPositionMs(long positionMs) {
+    if (positionMs > 0) {
+      playbackPosition = positionMs;
+    }
+  }
   private Uri uri = null;
   private Uri sturi = null;
   private ProgressBar Pbar;
@@ -214,6 +225,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private MediaRouteSelector mSelector;
   private CastStateListener castStateListener = null;
   private Boolean playerReady = false;
+  private boolean listenerAttached = false;
+  private boolean retriedStartFromZeroAfterHttpError = false;
 
   /**
    * Create Fragment View
@@ -380,8 +393,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
           switch (state) {
             case Player.STATE_IDLE:
               stateString = "ExoPlayer.STATE_IDLE      -";
-              Toast.makeText(context, "Video Url not found", Toast.LENGTH_SHORT).show();
-              playerExit();
+              // IDLE is the default and the post-error state. Do not treat it as a missing URL.
+              Log.w(TAG, "ExoPlayer.STATE_IDLE playerReady=" + playerReady);
               break;
             case Player.STATE_BUFFERING:
               stateString = "ExoPlayer.STATE_BUFFERING -";
@@ -414,7 +427,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 
                 play();
                 Log.v(TAG, "**** in ExoPlayer.STATE_READY firstReadyToPlay player.isPlaying" + player.isPlaying());
-                player.seekTo(currentWindow, playbackPosition);
+                if (
+                  playbackPosition > 0 &&
+                  Math.abs(player.getCurrentPosition() - playbackPosition) > 1000
+                ) {
+                  player.seekTo(currentWindow, playbackPosition);
+                }
                 styledPlayerView.post(() -> adjustAspectRatio());
 
                 // We show progress bar, position and duration only when the video is not live
@@ -486,6 +504,23 @@ public class FullscreenExoPlayerFragment extends Fragment {
         @Override
         public void onTracksChanged(Tracks tracks) {
           maybeEmitSubtitleFromTracks();
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+          Log.e(TAG, "onPlayerError code=" + error.errorCode + " " + error.getErrorCodeName(), error);
+          if (
+            !retriedStartFromZeroAfterHttpError &&
+            playbackPosition > 0 &&
+            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
+            player != null
+          ) {
+            retriedStartFromZeroAfterHttpError = true;
+            playbackPosition = 0;
+            player.seekTo(0);
+            player.prepare();
+            play();
+          }
         }
       };
 
@@ -820,10 +855,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
         // If cast is playing then it doesn't start the local player once get backs from background
         if (castContext != null && Boolean.TRUE.equals(chromecast) && isRemoteCastConnected(castPlayer)) return;
 
-        initializePlayer();
-        if (player != null && player.getCurrentPosition() != 0) {
-          firstReadyToPlay = false;
-          play();
+        // onCreateView already initializes. Re-running setMediaSource here double-loads HLS
+        // (401s on Bunny) and used to fire STATE_IDLE → fake "Video Url not found".
+        if (player == null) {
+          initializePlayer();
         }
       } else {
         // Story 45.x: avoid finishAndRemoveTask — same class of bug as PiP onStop (kills the whole Capacitor activity).
@@ -1059,9 +1094,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     if (mediaSource != null) {
       player.setAudioAttributes(AudioAttributes.DEFAULT, true);
-      player.addListener(listener);
-      attachDebugPlaybackLogging(player);
-      player.setMediaSource(mediaSource);
+      if (!listenerAttached) {
+        player.addListener(listener);
+        attachDebugPlaybackLogging(player);
+        listenerAttached = true;
+      }
+      if (playbackPosition > 0) {
+        player.setMediaSource(mediaSource, playbackPosition);
+      } else {
+        player.setMediaSource(mediaSource);
+      }
       player.prepare();
       if (drmSession != null) {
         drmSession.start();
@@ -1542,9 +1584,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
       styledPlayerView.setUseController(false);
       linearLayout.setVisibility(View.INVISIBLE);
     }
-    long seekPosition = player.getCurrentPosition() == UNKNOWN_TIME
-      ? 0
-      : Math.min(Math.max(0, timeSecond * 1000), player.getDuration());
+    long seekPosition = Math.max(0, timeSecond * 1000L);
+    long duration = player.getDuration();
+    if (duration > 0 && duration != C.TIME_UNSET && duration != UNKNOWN_TIME) {
+      seekPosition = Math.min(seekPosition, duration);
+    }
     player.seekTo(seekPosition);
   }
 
@@ -1667,6 +1711,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
     styledPlayerView = null;
     playWhenReady = true;
     firstReadyToPlay = true;
+    playerReady = false;
+    listenerAttached = false;
+    retriedStartFromZeroAfterHttpError = false;
     isEnded = false;
     currentWindow = 0;
     playbackPosition = 0;
