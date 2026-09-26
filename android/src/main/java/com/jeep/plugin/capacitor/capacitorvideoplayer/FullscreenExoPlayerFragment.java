@@ -84,9 +84,9 @@ import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.datasource.DataSource;
-import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
-
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.common.MimeTypes;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.VideoSize;
@@ -101,6 +101,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -171,6 +172,32 @@ public class FullscreenExoPlayerFragment extends Fragment {
   static boolean exitsOnPlayerError(int errorCode) {
     return errorCode < PlaybackException.ERROR_CODE_DRM_UNSPECIFIED
       || errorCode >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED + 1000;
+  }
+
+  static boolean isSidecarSubtitleUri(Uri uri) {
+    if (uri == null) {
+      return false;
+    }
+    String path = uri.getPath();
+    if (path != null && path.contains("/subtitle/")) {
+      return true;
+    }
+    String last = uri.getLastPathSegment();
+    return last != null && last.toLowerCase(Locale.US).endsWith(".vtt");
+  }
+
+  private static boolean isSidecarSubtitleHttpError(PlaybackException error) {
+    Throwable cause = error != null ? error.getCause() : null;
+    while (cause != null) {
+      if (cause instanceof HttpDataSource.InvalidResponseCodeException) {
+        HttpDataSource.InvalidResponseCodeException http = (HttpDataSource.InvalidResponseCodeException) cause;
+        if (http.dataSpec != null && isSidecarSubtitleUri(http.dataSpec.uri)) {
+          return true;
+        }
+      }
+      cause = cause.getCause();
+    }
+    return false;
   }
 
   void setInitialPlaybackPositionMs(long positionMs) {
@@ -524,6 +551,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
         @Override
         public void onPlayerError(PlaybackException error) {
           Log.e(TAG, "onPlayerError code=" + error.errorCode + " " + error.getErrorCodeName(), error);
+          if (isSidecarSubtitleHttpError(error)) {
+            Log.w(TAG, "sidecar subtitle HTTP error — keep playbackPosition");
+            return;
+          }
           if (
             !retriedStartFromZeroAfterHttpError &&
             playbackPosition > 0 &&

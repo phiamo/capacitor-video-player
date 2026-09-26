@@ -36,6 +36,20 @@ public class FullscreenExoPlayerFragmentTest {
   }
 
   @Test
+  public void sidecarSubtitleUri_matchesApiVtt() {
+    assertTrue(
+      FullscreenExoPlayerFragment.isSidecarSubtitleUri(
+        android.net.Uri.parse("https://awareness.ferrix.dwbn.org/api/v1/asset/test-1/subtitle/cs.vtt?bearer=tok")
+      )
+    );
+    assertFalse(
+      FullscreenExoPlayerFragment.isSidecarSubtitleUri(
+        android.net.Uri.parse("https://dwbn-awareness-drm-test.b-cdn.net/drm/pkg/video.m3u8")
+      )
+    );
+  }
+
+  @Test
   public void isRemoteCastConnected_nullPlayer_isFalse() {
     assertFalse(FullscreenExoPlayerFragment.isRemoteCastConnected((androidx.media3.common.Player) null));
   }
@@ -88,6 +102,8 @@ public class FullscreenExoPlayerFragmentTest {
     assertFalse(source.contains("Toast.makeText(context, \"Video Url not found\""));
     assertTrue(source.contains("onPlayerError"));
     assertTrue(source.contains("ERROR_CODE_IO_BAD_HTTP_STATUS"));
+    assertTrue(source.contains("isSidecarSubtitleHttpError"));
+    assertTrue(source.contains("keep playbackPosition"));
     assertTrue(source.contains("duration != C.TIME_UNSET"));
     assertTrue(source.contains("dismissOnStopForHandoff"));
     assertTrue(source.contains("player.getPlayWhenReady()"));
