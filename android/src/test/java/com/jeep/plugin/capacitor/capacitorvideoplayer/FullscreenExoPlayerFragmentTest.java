@@ -75,6 +75,8 @@ public class FullscreenExoPlayerFragmentTest {
     assertTrue(source.contains("onPlayerError"));
     assertTrue(source.contains("ERROR_CODE_IO_BAD_HTTP_STATUS"));
     assertTrue(source.contains("duration != C.TIME_UNSET"));
+    assertTrue(source.contains("dismissOnStopForHandoff"));
+    assertTrue(source.contains("player.getPlayWhenReady()"));
   }
 
   @Test

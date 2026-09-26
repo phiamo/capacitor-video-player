@@ -151,6 +151,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private boolean isEnded = false;
   /** Mirrors ExoPlayer playback; used to avoid background events when paused. */
   private boolean isVideoPlaying = false;
+  /**
+   * Epic 45: {@code bkmodeEnabled=false} dismisses fullscreen on background only when playback
+   * was running. Screen-off / {@code onStop} while the user paused must keep the overlay.
+   */
+  private boolean dismissOnStopForHandoff = false;
   private int currentWindow = 0;
   private long playbackPosition = 0;
 
@@ -814,7 +819,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Skips Picture-in-Picture where {@link Activity#isInPictureInPictureMode()} is true.
    */
   private void notifyAppBackgroundWhilePlayingIfNeeded() {
-    if (!isVideoPlaying || player == null) {
+    if (player == null) {
+      return;
+    }
+    if (!isVideoPlaying && !player.getPlayWhenReady()) {
       return;
     }
     Activity activity = getActivity();
@@ -887,9 +895,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
       isInPictureInPictureMode = false;
       return;
     }
-    // Epic 45 handoff (bkmodeEnabled=false): dismiss fullscreen when the app backgrounds so the
-    // native overlay cannot survive a foreground return if JS is throttled in the WebView.
-    if (!bkModeEnabled && isApplicationSentToBackground(context)) {
+    // Epic 45 handoff (bkmodeEnabled=false): dismiss only if playback was running when we
+    // paused for this lifecycle. isApplicationSentToBackground() is true for any live PID
+    // (not a real background check), so gating on it would also tear down a user pause +
+    // screen off and leave no video to resume.
+    if (dismissOnStopForHandoff) {
+      dismissOnStopForHandoff = false;
       playerExit();
     }
   }
@@ -928,6 +939,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
             if (player.isPlaying()) play();
           }
         } else {
+          if (!bkModeEnabled && player != null && player.getPlayWhenReady()) {
+            dismissOnStopForHandoff = true;
+            notifyAppBackgroundWhilePlayingIfNeeded();
+          }
           pause();
         }
       }
@@ -1714,6 +1729,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     playerReady = false;
     listenerAttached = false;
     retriedStartFromZeroAfterHttpError = false;
+    dismissOnStopForHandoff = false;
     isEnded = false;
     currentWindow = 0;
     playbackPosition = 0;
