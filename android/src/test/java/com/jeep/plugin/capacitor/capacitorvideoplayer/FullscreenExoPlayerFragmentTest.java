@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 
 import androidx.media3.cast.RemoteCastPlayer;
 import androidx.media3.common.DeviceInfo;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +21,19 @@ import org.robolectric.annotation.Config;
 @Config(sdk = 24)
 @UnstableApi
 public class FullscreenExoPlayerFragmentTest {
+
+  @Test
+  public void exitsOnFatalNonDrmErrors() {
+    assertTrue(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS));
+    assertTrue(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED));
+    assertTrue(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED));
+  }
+
+  @Test
+  public void leavesDrmErrorsToTheTypedJsError() {
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED));
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_UNSPECIFIED));
+  }
 
   @Test
   public void isRemoteCastConnected_nullPlayer_isFalse() {

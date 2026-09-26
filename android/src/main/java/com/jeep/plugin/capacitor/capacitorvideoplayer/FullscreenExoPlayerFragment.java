@@ -163,6 +163,16 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Applied on first STATE_READY {@code seekTo}. Must be set after construction;
    * {@link #resetVariables()} zeros this on release.
    */
+  /**
+   * Fatal non-DRM errors (404, network, bad manifest) close the player so JS gets
+   * {@code jeepCapVideoPlayerExit}. DRM errors stay open: JS already gets a typed
+   * {@code jeepCapVideoPlayerError} and decides (alert, Play here).
+   */
+  static boolean exitsOnPlayerError(int errorCode) {
+    return errorCode < PlaybackException.ERROR_CODE_DRM_UNSPECIFIED
+      || errorCode >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED + 1000;
+  }
+
   void setInitialPlaybackPositionMs(long positionMs) {
     if (positionMs > 0) {
       playbackPosition = positionMs;
@@ -525,6 +535,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
             player.seekTo(0);
             player.prepare();
             play();
+            return;
+          }
+          if (exitsOnPlayerError(error.errorCode)) {
+            Toast.makeText(context, "Video could not be played", Toast.LENGTH_SHORT).show();
+            playerExit();
           }
         }
       };
