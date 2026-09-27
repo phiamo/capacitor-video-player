@@ -1,5 +1,6 @@
 package com.jeep.plugin.capacitor.capacitorvideoplayer;
 
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
 import com.getcapacitor.JSObject;
 import java.util.function.Consumer;
@@ -80,6 +81,83 @@ public final class VideoDrm {
     data.put("fromPlayerId", fromPlayerId);
     data.put("error", typedError(error));
     return data;
+  }
+
+  /**
+   * Maps ExoPlayer DRM failures (CDM KEY_EXPIRED / 6006 / 6008) to a typed JS discriminator.
+   * Non-DRM errors return null so the fragment keeps its existing exit path.
+   */
+  public static String fromPlaybackException(PlaybackException error) {
+    if (error == null) {
+      return null;
+    }
+    if (!isDrmPlaybackError(error)) {
+      return null;
+    }
+    if (isKeyExpired(error)) {
+      return ERROR_EXPIRED;
+    }
+    return ERROR_UNKNOWN;
+  }
+
+  static boolean isDrmPlaybackError(PlaybackException error) {
+    int code = error.errorCode;
+    if (
+      code >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED &&
+      code < PlaybackException.ERROR_CODE_DRM_UNSPECIFIED + 1000
+    ) {
+      return true;
+    }
+    return causeLooksLikeDrm(error);
+  }
+
+  static boolean isKeyExpired(Throwable error) {
+    Throwable current = error;
+    while (current != null) {
+      if (current instanceof PlaybackException) {
+        int code = ((PlaybackException) current).errorCode;
+        if (
+          code == PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED ||
+          code == PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR
+        ) {
+          return true;
+        }
+      }
+      if (messageLooksExpired(current)) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
+  }
+
+  private static boolean causeLooksLikeDrm(Throwable error) {
+    Throwable current = error;
+    while (current != null) {
+      String name = current.getClass().getName();
+      if (name.contains("CryptoException") || name.contains("MediaDrm") || name.contains("DrmSession")) {
+        return true;
+      }
+      if (messageLooksExpired(current)) {
+        return true;
+      }
+      current = current.getCause();
+    }
+    return false;
+  }
+
+  private static boolean messageLooksExpired(Throwable error) {
+    String message = error.getMessage();
+    if (message == null) {
+      return false;
+    }
+    String upper = message.toUpperCase();
+    return (
+      upper.contains("ERROR_KEY_EXPIRED") ||
+      upper.contains("KEY_EXPIRED") ||
+      upper.contains("ERROR_DRM_NO_LICENSE") ||
+      upper.contains("DRM_NO_LICENSE")
+    );
   }
 
   public static final class OpenAttempt {

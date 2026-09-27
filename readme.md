@@ -11,6 +11,9 @@
   <a href="https://capacitorjs.com"><img src="https://img.shields.io/badge/capacitor-8-119EFF?style=flat-square" /></a>
   <a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-10-orange?style=flat-square" /></a>
 </p>
+<p align="center">
+  <a href="https://ko-fi.com/W8V527Q5YX"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi" /></a>
+</p>
 
 > 📦 **Now on npm as `@dwbn/capacitor-video-player`.** This fork was previously used from git under the upstream name `@brylsherbert/capacitor-video-player`. The iOS pod is now `DwbnCapacitorVideoPlayer`. The repository stays here. [How to switch →](./docs/upgrading.md#brylsherbertcapacitor-video-player--dwbncapacitor-video-player)
 
@@ -98,8 +101,6 @@ The major version follows Capacitor's major: **8.x targets Capacitor 8**, the sa
 ## Contributors ✨
 
 Thank you to [everyone who contributed](./docs/history.md#contributors-) over the years: Jean Pierre Quéau, Yelhouti, Mamane10, Пронин Андрей KANekT, Michael Rieger, Manuel García Marín, Jelle Oppenhuis, fegauthier, Harmon Wood, Eduardo Roth, Bryl Sherbert and phiamo. This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind are welcome!
-
-<a href="https://ko-fi.com/W8V527Q5YX"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi" /></a>
 
 ## License
 

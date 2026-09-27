@@ -6,6 +6,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.drm.DrmSessionManager;
 import com.getcapacitor.JSObject;
@@ -113,6 +114,42 @@ public class VideoDrmTest {
     assertEquals("p1", payload.getString("fromPlayerId"));
     assertEquals("notEntitled", payload.getString("error"));
     assertTrue(errors.size() == 1);
+  }
+
+  @Test
+  public void fromPlaybackException_mapsKeyExpiredAndSystemErrorToExpired() {
+    PlaybackException expired = new PlaybackException(
+      "ERROR_KEY_EXPIRED",
+      null,
+      PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR
+    );
+    assertEquals(VideoDrm.ERROR_EXPIRED, VideoDrm.fromPlaybackException(expired));
+    PlaybackException licenseExpired = new PlaybackException(
+      "license expired",
+      null,
+      PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED
+    );
+    assertEquals(VideoDrm.ERROR_EXPIRED, VideoDrm.fromPlaybackException(licenseExpired));
+  }
+
+  @Test
+  public void fromPlaybackException_otherDrmStaysTypedUnknown() {
+    PlaybackException other = new PlaybackException(
+      "license denied",
+      null,
+      PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED
+    );
+    assertEquals(VideoDrm.ERROR_UNKNOWN, VideoDrm.fromPlaybackException(other));
+  }
+
+  @Test
+  public void fromPlaybackException_nonDrmIsNull() {
+    PlaybackException http = new PlaybackException(
+      "404",
+      null,
+      PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+    );
+    assertNull(VideoDrm.fromPlaybackException(http));
   }
 
   private static final class FakeVideoDrmSession implements VideoDrmSession {

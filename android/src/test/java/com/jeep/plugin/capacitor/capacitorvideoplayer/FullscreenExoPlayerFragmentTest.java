@@ -33,6 +33,8 @@ public class FullscreenExoPlayerFragmentTest {
   public void leavesDrmErrorsToTheTypedJsError() {
     assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED));
     assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_UNSPECIFIED));
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR));
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED));
   }
 
   @Test
@@ -104,6 +106,10 @@ public class FullscreenExoPlayerFragmentTest {
     assertTrue(source.contains("ERROR_CODE_IO_BAD_HTTP_STATUS"));
     assertTrue(source.contains("isSidecarSubtitleHttpError"));
     assertTrue(source.contains("keep playbackPosition"));
+    assertTrue(source.contains("HTTP error after start"));
+    assertTrue(source.contains("VideoDrm.fromPlaybackException"));
+    assertTrue(source.contains("notifyTypedDrmPlayerError"));
+    assertTrue(source.contains("notifyJeepCapVideoPlayerError"));
     assertTrue(source.contains("duration != C.TIME_UNSET"));
     assertTrue(source.contains("dismissOnStopForHandoff"));
     assertTrue(source.contains("player.getPlayWhenReady()"));

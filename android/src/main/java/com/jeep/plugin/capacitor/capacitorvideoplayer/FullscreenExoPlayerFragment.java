@@ -166,12 +166,27 @@ public class FullscreenExoPlayerFragment extends Fragment {
    */
   /**
    * Fatal non-DRM errors (404, network, bad manifest) close the player so JS gets
-   * {@code jeepCapVideoPlayerExit}. DRM errors stay open: JS already gets a typed
-   * {@code jeepCapVideoPlayerError} and decides (alert, Play here).
+   * {@code jeepCapVideoPlayerExit}. DRM errors stay open: JS gets a typed
+   * {@code jeepCapVideoPlayerError} (including CDM KEY_EXPIRED / 6006) and decides.
    */
   static boolean exitsOnPlayerError(int errorCode) {
     return errorCode < PlaybackException.ERROR_CODE_DRM_UNSPECIFIED
       || errorCode >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED + 1000;
+  }
+
+  private void notifyTypedDrmPlayerError(String drmError) {
+    if (Pbar != null) {
+      Pbar.setVisibility(View.GONE);
+    }
+    if (player != null) {
+      player.stop();
+    }
+    CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+    if (plugin != null) {
+      plugin.notifyJeepCapVideoPlayerError(
+        VideoDrm.errorListenerData(playerId != null ? playerId : "fullscreen", drmError)
+      );
+    }
   }
 
   static boolean isSidecarSubtitleUri(Uri uri) {
@@ -553,6 +568,15 @@ public class FullscreenExoPlayerFragment extends Fragment {
           Log.e(TAG, "onPlayerError code=" + error.errorCode + " " + error.getErrorCodeName(), error);
           if (isSidecarSubtitleHttpError(error)) {
             Log.w(TAG, "sidecar subtitle HTTP error — keep playbackPosition");
+            return;
+          }
+          if (playerReady && error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+            Log.w(TAG, "HTTP error after start — keep playbackPosition");
+            return;
+          }
+          String drmError = VideoDrm.fromPlaybackException(error);
+          if (drmError != null) {
+            notifyTypedDrmPlayerError(drmError);
             return;
           }
           if (
