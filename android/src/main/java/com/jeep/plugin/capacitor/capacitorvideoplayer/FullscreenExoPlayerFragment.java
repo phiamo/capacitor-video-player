@@ -51,6 +51,7 @@ import androidx.mediarouter.media.MediaRouteSelector;
 import androidx.mediarouter.media.MediaRouter;
 import com.getcapacitor.JSObject;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.common.util.Util;
 import androidx.media3.common.C;
 import androidx.media3.session.MediaSession;
 import androidx.media3.exoplayer.DefaultLoadControl;
@@ -1264,11 +1265,20 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   /**
+   * Media3's standard agent, e.g. {@code CapacitorVideoPlayer/1.0 (Linux;Android 17) AndroidXMedia3/1.11.1}.
+   * Never put "exoplayer" in it: the Bunny storage origin answers 401 to cache-slice pulls from
+   * such agents, so any seek into bytes not yet on the edge stalls.
+   */
+  static String userAgent(Context context) {
+    return Util.getUserAgent(context, "CapacitorVideoPlayer");
+  }
+
+  /**
    * Build the Asset MediaSource
    */
   private DataSource.Factory createDefaultDataSourceFactory() {
     DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
-    httpFactory.setUserAgent("jeep-exoplayer-plugin");
+    httpFactory.setUserAgent(userAgent(context));
     return new androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory);
   }
 
@@ -1304,7 +1314,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
    */
   private MediaSource buildHttpMediaSource() {
     DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
-    httpDataSourceFactory.setUserAgent("jeep-exoplayer-plugin");
+    httpDataSourceFactory.setUserAgent(userAgent(context));
     httpDataSourceFactory.setConnectTimeoutMs(DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS);
     httpDataSourceFactory.setReadTimeoutMs(1800000);
     httpDataSourceFactory.setAllowCrossProtocolRedirects(true);

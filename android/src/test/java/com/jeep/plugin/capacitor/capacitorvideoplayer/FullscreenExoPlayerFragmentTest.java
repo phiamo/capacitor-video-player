@@ -12,15 +12,25 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 24)
 @UnstableApi
 public class FullscreenExoPlayerFragmentTest {
+
+  @Test
+  public void userAgentNeverMentionsExoPlayer() {
+    // Bunny storage 401s cache-slice pulls for "exoplayer" agents; seeks past the cached bytes stall.
+    String ua = FullscreenExoPlayerFragment.userAgent(RuntimeEnvironment.getApplication());
+    assertFalse(ua, ua.toLowerCase(Locale.ROOT).contains("exoplayer"));
+    assertTrue(ua, ua.startsWith("CapacitorVideoPlayer/"));
+  }
 
   @Test
   public void exitsOnFatalNonDrmErrors() {
