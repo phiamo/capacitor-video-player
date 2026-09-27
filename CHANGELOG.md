@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Fixed
+- **Android:** `initPlayer` while a player is still on screen (`stopAllPlayers` only pauses) now replaces that player in place. Before, it returned "FrameLayout for ExoPlayer already exists" and released the new DRM session, so an in-place re-init after `expired` could never work. Native events are also no longer registered once per `initPlayer`, so JS no longer gets each event twice.
+- **Android:** the player instance is now per fragment instead of static. When one fragment replaced another, the old one's teardown released the new player, and the rebuilt player crashed on its reused `DrmSessionManager`. The old fragment also releases its MediaSession before the new one is built (Media3 needs unique session ids).
+- **Android:** a decoder failure (`4003`) after an unrecovered DRM session error on protected content is reported as the typed `expired` error. Before, it was a generic decoder error. A license that ran out after a failed renewal showed up this way on some decoders.
 - **Android:** seeking far into a video served from a Bunny storage origin stalled with HTTP 401. The player's HTTP user agent was the hard-coded `jeep-exoplayer-plugin`, and Bunny's storage origin rejects cache-slice (Range) pulls from agents that contain "exoplayer". Bytes already on the edge still played, which is why playback from 0:00 worked. The player now sends Media3's standard agent, `CapacitorVideoPlayer/<app version> (Linux;Android <n>) AndroidXMedia3/<version>`. A unit test keeps "exoplayer" out of it.
 
 ### Changed

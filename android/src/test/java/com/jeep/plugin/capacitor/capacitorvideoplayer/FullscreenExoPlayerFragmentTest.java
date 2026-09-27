@@ -1,6 +1,8 @@
 package com.jeep.plugin.capacitor.capacitorvideoplayer;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import androidx.media3.cast.RemoteCastPlayer;
@@ -23,6 +25,22 @@ import org.robolectric.annotation.Config;
 @Config(sdk = 24)
 @UnstableApi
 public class FullscreenExoPlayerFragmentTest {
+
+  @Test
+  public void decodeFailureAfterFailedRenewalOnProtectedContentIsExpired() {
+    // Emulator 2026-09-27: renewal failed at 4m49s, keys ran out at 5m50s, Media3 reported 4003.
+    assertEquals(
+      VideoDrm.ERROR_EXPIRED,
+      FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_DECODING_FAILED, true, true)
+    );
+  }
+
+  @Test
+  public void decodeFailureWithoutDrmErrorOrOnClearContentStaysAPlainError() {
+    assertNull(FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_DECODING_FAILED, true, false));
+    assertNull(FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_DECODING_FAILED, false, true));
+    assertNull(FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, true, true));
+  }
 
   @Test
   public void userAgentNeverMentionsExoPlayer() {

@@ -57,6 +57,7 @@ import androidx.media3.session.MediaSession;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.util.EventLogger;
 import androidx.media3.common.Format;
 import androidx.media3.exoplayer.LoadControl;
@@ -147,7 +148,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private Player.Listener listener;
   private PlayerView styledPlayerView;
   private String vType = null;
-  private static ExoPlayer player;
+  // Per fragment, not static: when initPlayer replaces a fragment, the old one's teardown
+  // (onPause/onDestroy -> releasePlayer) must not pause or release the new fragment's player.
+  private ExoPlayer player;
   private boolean playWhenReady = true;
   private boolean firstReadyToPlay = true;
   private boolean isEnded = false;
@@ -170,6 +173,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * {@code jeepCapVideoPlayerExit}. DRM errors stay open: JS gets a typed
    * {@code jeepCapVideoPlayerError} (including CDM KEY_EXPIRED / 6006) and decides.
    */
+  /**
+   * When a license renewal fails, playback continues on the old keys until they run out. On
+   * some decoders that ends as {@code ERROR_CODE_DECODING_FAILED} with no DRM marker in the cause
+   * (seen on Android 16 L3), so treat a decode failure after an unrecovered DRM session error on
+   * protected content as {@code expired}. Returns null when the error is not that case.
+   */
+  static String drmErrorForDecodeFailure(int errorCode, boolean protectedContent, boolean drmSessionErrorSinceKeysLoaded) {
+    if (protectedContent && drmSessionErrorSinceKeysLoaded && errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+      return VideoDrm.ERROR_EXPIRED;
+    }
+    return null;
+  }
+
   static boolean exitsOnPlayerError(int errorCode) {
     return errorCode < PlaybackException.ERROR_CODE_DRM_UNSPECIFIED
       || errorCode >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED + 1000;
@@ -285,6 +301,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private Boolean playerReady = false;
   private boolean listenerAttached = false;
   private boolean retriedStartFromZeroAfterHttpError = false;
+  /** Set when initPlayer replaces this fragment; teardown then stays silent (no exit event). */
+  private boolean replacedByNewPlayer = false;
+  /** A DRM session error (e.g. a failed license renewal) with no successful key load since. */
+  private boolean drmSessionErrorSinceKeysLoaded = false;
 
   /**
    * Create Fragment View
@@ -576,6 +596,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
             return;
           }
           String drmError = VideoDrm.fromPlaybackException(error);
+          if (drmError == null) {
+            drmError = drmErrorForDecodeFailure(error.errorCode, drmSession != null, drmSessionErrorSinceKeysLoaded);
+          }
           if (drmError != null) {
             notifyTypedDrmPlayerError(drmError);
             return;
@@ -813,6 +836,17 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
   }
 
+  /**
+   * initPlayer is replacing this player in place. Release now, before the new fragment builds its
+   * player: the new MediaSession reuses the id {@code org.dwbn.video} and Media3 requires ids to be
+   * unique. Later teardown stays silent (no exit event).
+   */
+  void releaseForReplacement() {
+    replacedByNewPlayer = true;
+    dismissOnStopForHandoff = false;
+    releasePlayer();
+  }
+
   public void playerExit() {
     // Capture head before teardown. Do not seekTo(0) — that races position ticks and can
     // poison Epic 45 video→audio handoff with position 0 / stale open position.
@@ -829,6 +863,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
       player.setVolume(curVolume);
     }
     releasePlayer();
+    if (replacedByNewPlayer) {
+      return;
+    }
 /* 
     Activity mAct = getActivity();
     int mOrient = mAct.getRequestedOrientation();
@@ -1182,6 +1219,19 @@ public class FullscreenExoPlayerFragment extends Fragment {
       player.setAudioAttributes(AudioAttributes.DEFAULT, true);
       if (!listenerAttached) {
         player.addListener(listener);
+        player.addAnalyticsListener(
+          new AnalyticsListener() {
+            @Override
+            public void onDrmSessionManagerError(EventTime eventTime, Exception error) {
+              drmSessionErrorSinceKeysLoaded = true;
+            }
+
+            @Override
+            public void onDrmKeysLoaded(EventTime eventTime) {
+              drmSessionErrorSinceKeysLoaded = false;
+            }
+          }
+        );
         attachDebugPlaybackLogging(player);
         listenerAttached = true;
       }
@@ -1809,6 +1859,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     playerReady = false;
     listenerAttached = false;
     retriedStartFromZeroAfterHttpError = false;
+    drmSessionErrorSinceKeysLoaded = false;
     dismissOnStopForHandoff = false;
     isEnded = false;
     currentWindow = 0;

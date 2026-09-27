@@ -1164,6 +1164,9 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
     }
 
     private void AddObserversToNotificationCenter() {
+        // initPlayer can run again while a player is on screen (in-place DRM re-init). Start from
+        // a clean slate so every native event reaches JS once, not once per initPlayer.
+        NotificationCenter.defaultCenter().removeAllNotifications();
         NotificationCenter
             .defaultCenter()
             .addMethodForNotification(
@@ -1481,6 +1484,7 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
             return;
         }
         final VideoDrmSession drmSession = drmAttempt.session;
+        final FullscreenExoPlayerFragment previousFragment = fsFragment;
 
         fsFragment =
             implementation.createFullScreenFragment(
@@ -1524,14 +1528,15 @@ public class CapacitorVideoPlayerPlugin extends Plugin {
                         ret.put("method", "initPlayer");
                         FrameLayout frameLayoutView = getBridge().getActivity().findViewById(frameLayoutViewId);
                         if (frameLayoutView != null) {
-                            if (drmSession != null) {
-                                drmSession.release();
+                            // A player is still on screen (stopAllPlayers only pauses it): replace it
+                            // in the same container. The old fragment releases its own player and DRM
+                            // session and must not report an exit, or JS would hand audio back.
+                            if (previousFragment != null && previousFragment != fsFragment) {
+                                previousFragment.releaseForReplacement();
                             }
-                            if (fsFragment != null) {
-                                fsFragment.drmSession = null;
-                            }
-                            ret.put("result", false);
-                            ret.put("message", "FrameLayout for ExoPlayer already exists");
+                            // FragmentTransaction.replace removes the previous fragment.
+                            fragmentUtils.loadFragment(fsFragment, frameLayoutViewId);
+                            ret.put("result", true);
                         } else {
                             // Initialize a new FrameLayout as container for fragment
                             frameLayoutView = new FrameLayout(getActivity().getApplicationContext());
