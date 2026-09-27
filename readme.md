@@ -41,7 +41,7 @@ The plugins work on their own. drm-kit is optional and is added by the **app**, 
 | Chromecast | ✅ Media3 Cast | — | — |
 | Lock screen / MediaSession | ✅ | ✅ artwork, title | — |
 | DRM | ✅ Widevine via [drm-kit](./docs/drm.md) | planned (FairPlay) | — |
-| Minimum | SDK 24 | iOS 18 | modern browsers |
+| Minimum | SDK 24 | iOS 15 | modern browsers |
 
 The full method and listener matrix is in [usage.md](./docs/usage.md). Requires **Capacitor 8** (`@capacitor/core >= 8.0.0`).
 

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "DwbnCapacitorVideoPlayer",
-    platforms: [.iOS(.v18)],
+    platforms: [.iOS(.v15)],
     products: [
         .library(
             name: "DwbnCapacitorVideoPlayer",

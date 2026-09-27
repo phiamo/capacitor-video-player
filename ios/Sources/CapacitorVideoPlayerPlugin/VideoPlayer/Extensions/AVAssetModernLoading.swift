@@ -116,7 +116,10 @@ extension AVURLAsset {
 
 extension Locale {
     var modernLanguageCode: String? {
-        language.languageCode?.identifier
+        if #available(iOS 16, *) {
+            return language.languageCode?.identifier
+        }
+        return languageCode
     }
 }
 

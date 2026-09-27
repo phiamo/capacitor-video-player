@@ -9,6 +9,7 @@
 - **Android:** seeking far into a video served from a Bunny storage origin stalled with HTTP 401. The player's HTTP user agent was the hard-coded `jeep-exoplayer-plugin`, and Bunny's storage origin rejects cache-slice (Range) pulls from agents that contain "exoplayer". Bytes already on the edge still played, which is why playback from 0:00 worked. The player now sends Media3's standard agent, `CapacitorVideoPlayer/<app version> (Linux;Android <n>) AndroidXMedia3/<version>`. A unit test keeps "exoplayer" out of it.
 
 ### Changed
+- **iOS:** the minimum is iOS 15 (was iOS 18). The subtitle retry delays use `Task.sleep(nanoseconds:)` and subtitle language codes fall back to `Locale.languageCode` below iOS 16 (Story 58.2).
 - **Published as `@dwbn/capacitor-video-player`.** Before, this fork was used from git under the upstream name `@brylsherbert/capacitor-video-player`. To switch, replace the dependency, update imports, and run `npx cap sync`.
 - **iOS:** the CocoaPods pod and the Swift Package product are renamed `BrylsherbertCapacitorVideoPlayer` → `DwbnCapacitorVideoPlayer`. The Capacitor plugin name (`CapacitorVideoPlayer`), the JS API, the events and the Android namespace are unchanged.
 
