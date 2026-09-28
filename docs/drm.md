@@ -1,6 +1,6 @@
 # Protected playback (DRM)
 
-`initPlayer` accepts an optional `drm` descriptor. On **Android**, the player plays it with Widevine through a provider that the **host app** registers. **iOS and web** refuse `drm` for now (FairPlay is planned). Chromecast `MediaItem`s are not affected (no DRM).
+`initPlayer` accepts an optional `drm` descriptor. On **Android** and **iOS**, the player plays it (Widevine / FairPlay) through a provider that the **host app** registers. **Web** refuses `drm` for now. Chromecast `MediaItem`s are not affected (no DRM).
 
 The plugin deliberately does **not** depend on a DRM library. The DWBN apps use [**drm-kit**](https://github.com/phiamo/drm-kit). It provides the Widevine session (license, token refresh, heartbeat, stream limits) for both this plugin and [`@dwbn/capacitor-plugin-playlist`](https://github.com/phiamo/capacitor-plugin-playlist).
 
@@ -54,8 +54,8 @@ if (!res.result) console.warn(res.code, res.message); // noProvider | notSupport
 | Situation | Result |
 |---|---|
 | No `drm` | Plain playback |
-| `drm` set, no provider registered (Android) | `{ result: false, code: "noProvider" }`, no player created |
-| `drm` set on iOS or web | `{ result: false, code: "notSupported", message: "DRM not supported on this platform yet" }` |
+| `drm` set, no provider registered (Android or iOS) | `{ result: false, code: "noProvider" }`, no player created |
+| `drm` set on web | `{ result: false, code: "notSupported", message: "DRM not supported on this platform yet" }` |
 
 ## Errors
 
