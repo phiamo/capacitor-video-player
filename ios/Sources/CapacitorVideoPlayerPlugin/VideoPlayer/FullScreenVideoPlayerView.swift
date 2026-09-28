@@ -680,6 +680,9 @@ open class FullScreenVideoPlayerView: UIView {
                             of: subtitleTracks[0],
                             at: CMTime.zero)
 
+                        // Story 58.4: an AVPlayerItem built from a composition only receives key
+                        // requests for recipients registered on the composition itself.
+                        self.drmSession?.attach(to: composition)
                         self.playerItem = AVPlayerItem(asset: composition)
                         self.playerItem?.textStyleRules = textStyle
                         Self.logger.debug("Successfully added subtitle track")
@@ -877,6 +880,7 @@ open class FullScreenVideoPlayerView: UIView {
         ) {
             Self.logger.notice(" Composition created successfully with subtitles")
 
+            self.drmSession?.attach(to: composition)
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
 
@@ -993,6 +997,7 @@ open class FullScreenVideoPlayerView: UIView {
         ) {
             Self.logger.notice(" Composition created successfully with all tracks")
 
+            self.drmSession?.attach(to: composition)
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
 
@@ -1031,6 +1036,7 @@ open class FullScreenVideoPlayerView: UIView {
         ) {
             Self.logger.notice(" Composition created successfully with subtitles")
 
+            self.drmSession?.attach(to: composition)
             Self.logger.debug("🔄 Creating new player item with composition...")
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
@@ -1117,6 +1123,7 @@ open class FullScreenVideoPlayerView: UIView {
             audioTracks: audioTracks,
             subtitleTracks: subtitleTracks
         ) {
+            self.drmSession?.attach(to: composition)
             self.playerItem = AVPlayerItem(asset: composition)
             self.playerItem?.textStyleRules = self.getTextStyleRules()
             self.player = AVPlayer(playerItem: self.playerItem)

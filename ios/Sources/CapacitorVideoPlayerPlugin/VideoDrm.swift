@@ -13,8 +13,11 @@ import Foundation
 /// never imports drm-kit.
 public protocol VideoDrmSession: AnyObject {
     /// Routes the asset's FairPlay key requests through the session. Call before any
-    /// `AVPlayerItem` is built from `asset`.
-    func attach(to asset: AVURLAsset)
+    /// `AVPlayerItem` is built from `asset` — including a rebuilt `AVComposition`: an
+    /// `AVPlayerItem` built from a composition only receives key requests for recipients
+    /// registered on that composition object itself, not on the source asset it was built from,
+    /// so call this again with the new composition whenever one replaces `videoAsset`.
+    func attach(to asset: AVAsset)
     func start()
     func release()
 }
