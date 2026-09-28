@@ -637,6 +637,17 @@ open class FullScreenVideoPlayerView: UIView {
     private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) async {
         Self.logger.debug("Creating player with subtitles...")
 
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // composition built here could never receive FairPlay key requests. Skip composition and
+        // play `videoAsset` directly (already DRM-registered) while a session is attached.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition, playing videoAsset directly")
+            self.playerItem = AVPlayerItem(asset: self.videoAsset)
+            self.player = AVPlayer(playerItem: self.playerItem)
+            self.setupPlayer()
+            return
+        }
+
         var textStyle: [AVTextStyleRule] = []
         if let opt = self._stOptions {
             textStyle.append(contentsOf: self.setSubTitleStyle(options: opt))
@@ -680,9 +691,6 @@ open class FullScreenVideoPlayerView: UIView {
                             of: subtitleTracks[0],
                             at: CMTime.zero)
 
-                        // Story 58.4: an AVPlayerItem built from a composition only receives key
-                        // requests for recipients registered on the composition itself.
-                        self.drmSession?.attach(to: composition)
                         self.playerItem = AVPlayerItem(asset: composition)
                         self.playerItem?.textStyleRules = textStyle
                         Self.logger.debug("Successfully added subtitle track")
@@ -866,6 +874,15 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // composition built here could never receive FairPlay key requests. Leave the current,
+        // already-DRM-registered player item in place rather than replacing it with one that
+        // silently loses key delivery.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
+            return
+        }
+
         let assetToUse: AVAsset
         if let urlAsset = asset as? AVURLAsset {
             assetToUse = urlAsset
@@ -880,7 +897,6 @@ open class FullScreenVideoPlayerView: UIView {
         ) {
             Self.logger.notice(" Composition created successfully with subtitles")
 
-            self.drmSession?.attach(to: composition)
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
 
@@ -990,6 +1006,13 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
+        // the current, already-DRM-registered player item in place.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
+            return
+        }
+
         if let composition = await self.createCompositionWithPlayerItemTracks(
             videoTracks: playerItemVideoTracks,
             audioTracks: playerItemAudioTracks,
@@ -997,7 +1020,6 @@ open class FullScreenVideoPlayerView: UIView {
         ) {
             Self.logger.notice(" Composition created successfully with all tracks")
 
-            self.drmSession?.attach(to: composition)
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
 
@@ -1030,13 +1052,19 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
+        // the current, already-DRM-registered player item in place.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
+            return
+        }
+
         if let composition = await self.createCompositionWithMultipleSubtitlesForHLS(
             videoAsset: self.videoAsset,
             subtitleTracks: subtitleTracks
         ) {
             Self.logger.notice(" Composition created successfully with subtitles")
 
-            self.drmSession?.attach(to: composition)
             Self.logger.debug("🔄 Creating new player item with composition...")
             let newPlayerItem = AVPlayerItem(asset: composition)
             newPlayerItem.textStyleRules = self.getTextStyleRules()
@@ -1116,6 +1144,17 @@ open class FullScreenVideoPlayerView: UIView {
         videoTracks: [AVAssetTrack],
         subtitleTracks: [[String: Any]]
     ) async {
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // composition built here could never receive FairPlay key requests. Skip composition and
+        // play `videoAsset` directly (already DRM-registered) while a session is attached.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition, playing videoAsset directly")
+            self.playerItem = AVPlayerItem(asset: self.videoAsset)
+            self.player = AVPlayer(playerItem: self.playerItem)
+            self.setupPlayer()
+            return
+        }
+
         let audioTracks = (try? await self.videoAsset.loadAudioTracks()) ?? []
 
         if let composition = await self.createCompositionWithMultipleSubtitles(
@@ -1123,7 +1162,6 @@ open class FullScreenVideoPlayerView: UIView {
             audioTracks: audioTracks,
             subtitleTracks: subtitleTracks
         ) {
-            self.drmSession?.attach(to: composition)
             self.playerItem = AVPlayerItem(asset: composition)
             self.playerItem?.textStyleRules = self.getTextStyleRules()
             self.player = AVPlayer(playerItem: self.playerItem)

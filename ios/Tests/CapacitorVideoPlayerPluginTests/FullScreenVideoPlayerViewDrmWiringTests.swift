@@ -54,11 +54,11 @@ final class FullScreenVideoPlayerViewDrmWiringTests: XCTestCase {
 }
 
 private final class FakeVideoDrmSession: VideoDrmSession {
-    var attachedAsset: AVAsset?
+    var attachedAsset: AVURLAsset?
     var startCalled = false
     var releaseCalled = false
 
-    func attach(to asset: AVAsset) {
+    func attach(to asset: AVURLAsset) {
         attachedAsset = asset
     }
 

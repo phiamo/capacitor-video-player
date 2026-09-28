@@ -107,11 +107,11 @@ private final class FakeVideoDrmProvider: VideoDrmProvider {
 
 private final class FakeVideoDrmSession: VideoDrmSession {
     var onError: ((String) -> Void)?
-    var attachedAsset: AVAsset?
+    var attachedAsset: AVURLAsset?
     var startCalled = false
     var releaseCalled = false
 
-    func attach(to asset: AVAsset) {
+    func attach(to asset: AVURLAsset) {
         attachedAsset = asset
     }
 
