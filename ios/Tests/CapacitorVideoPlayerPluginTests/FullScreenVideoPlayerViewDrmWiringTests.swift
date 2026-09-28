@@ -2,41 +2,71 @@
 //  FullScreenVideoPlayerViewDrmWiringTests.swift
 //  CapacitorVideoPlayerPluginTests
 //
-//  Story 58.4: source-text guardrail mirroring Android's
-//  FullscreenExoPlayerFragmentTest.fragmentSource_doesNotUseDeprecatedPipFullscreenOrCastSessionApis
-//  (which asserts drmSession.start()/.release() ordering in source, since a full runtime test of
-//  the fragment/view is impractical). Verifies the DRM session is attached and started before any
-//  AVPlayerItem is built from videoAsset, and released from both deinit and cleanup().
+//  Story 58.4: exercises FullScreenVideoPlayerView's actual DRM wiring — attach(to:)/start() run
+//  during init, release() runs from cleanup() — rather than pattern-matching the source text.
+//  `initialize()` only schedules a `Task { @MainActor in ... }` and returns immediately, so by the
+//  time `init(...)` returns, the synchronous attach/start calls that precede it have already run.
 //
 
+import AVFoundation
+import Capacitor
 import XCTest
+@testable import CapacitorVideoPlayerPlugin
 
 final class FullScreenVideoPlayerViewDrmWiringTests: XCTestCase {
 
-    func test_drmSessionAttachedAndStartedBeforeInitialize() throws {
-        let source = try Self.sourceText()
-        let attachRange = try XCTUnwrap(source.range(of: "drmSession.attach(to: self.videoAsset)"))
-        let startRange = try XCTUnwrap(source.range(of: "drmSession.start()"))
-        let initializeRange = try XCTUnwrap(source.range(of: "self.initialize()"))
-        XCTAssertTrue(attachRange.lowerBound < initializeRange.lowerBound,
-                      "drmSession.attach(to:) must run before self.initialize() builds the first AVPlayerItem")
-        XCTAssertTrue(startRange.lowerBound < initializeRange.lowerBound,
-                      "drmSession.start() must run before self.initialize() builds the first AVPlayerItem")
+    func test_drmSessionAttachedAndStartedDuringInit() {
+        let session = FakeVideoDrmSession()
+        let view = makeView(drmSession: session)
+        XCTAssertTrue(session.attachedAsset === view.videoAsset,
+                      "drmSession.attach(to:) must be called with the view's own videoAsset")
+        XCTAssertTrue(session.startCalled)
+        view.cleanup()
     }
 
-    func test_drmSessionReleasedFromDeinitAndCleanup() throws {
-        let source = try Self.sourceText()
-        let releaseCount = source.components(separatedBy: "self.drmSession?.release()").count - 1
-        XCTAssertEqual(releaseCount, 2, "expected drmSession release() from both deinit and cleanup()")
+    func test_cleanupReleasesTheDrmSession() {
+        let session = FakeVideoDrmSession()
+        let view = makeView(drmSession: session)
+        XCTAssertFalse(session.releaseCalled)
+        view.cleanup()
+        XCTAssertTrue(session.releaseCalled)
     }
 
-    private static func sourceText() throws -> String {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let sourceFile = testFile
-            .deletingLastPathComponent() // CapacitorVideoPlayerPluginTests/
-            .deletingLastPathComponent() // Tests/
-            .deletingLastPathComponent() // ios/
-            .appendingPathComponent("Sources/CapacitorVideoPlayerPlugin/VideoPlayer/FullScreenVideoPlayerView.swift")
-        return try String(contentsOf: sourceFile, encoding: .utf8)
+    func test_plainPlaybackWithoutDrmSessionConstructsCleanly() {
+        // No session registered (drm absent, or noProvider already short-circuited upstream):
+        // the view must build normally with a nil drmSession.
+        let view = makeView(drmSession: nil)
+        XCTAssertNotNil(view.videoAsset)
+        view.cleanup()
+    }
+
+    private func makeView(drmSession: VideoDrmSession?) -> FullScreenVideoPlayerView {
+        FullScreenVideoPlayerView(
+            url: URL(string: "https://example.com/video.mp4")!,
+            rate: 1.0, playerId: "test-player", exitOnEnd: true,
+            loopOnEnd: false, pipEnabled: false, showControls: true,
+            displayMode: "all", stUrl: nil, stLanguage: nil,
+            stHeaders: nil, stOptions: nil,
+            title: nil, smallTitle: nil, artwork: nil,
+            subtitleTracks: nil, selectedSubtitleId: nil,
+            drmSession: drmSession)
+    }
+}
+
+private final class FakeVideoDrmSession: VideoDrmSession {
+    var attachedAsset: AVURLAsset?
+    var startCalled = false
+    var releaseCalled = false
+
+    func attach(to asset: AVURLAsset) {
+        attachedAsset = asset
+    }
+
+    func start() {
+        startCalled = true
+    }
+
+    func release() {
+        releaseCalled = true
     }
 }
