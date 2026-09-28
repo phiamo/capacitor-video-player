@@ -8,6 +8,9 @@
 - **Android:** a decoder failure (`4003`) after an unrecovered DRM session error on protected content is reported as the typed `expired` error. Before, it was a generic decoder error. A license that ran out after a failed renewal showed up this way on some decoders.
 - **Android:** seeking far into a video served from a Bunny storage origin stalled with HTTP 401. The player's HTTP user agent was the hard-coded `jeep-exoplayer-plugin`, and Bunny's storage origin rejects cache-slice (Range) pulls from agents that contain "exoplayer". Bytes already on the edge still played, which is why playback from 0:00 worked. The player now sends Media3's standard agent, `CapacitorVideoPlayer/<app version> (Linux;Android <n>) AndroidXMedia3/<version>`. A unit test keeps "exoplayer" out of it.
 
+### Added
+- **iOS:** protected video playback via a host-registered `VideoDrmProvider`/`VideoDrmSession`, mirroring Android's contract exactly (Story 58.4). `initPlayer` with `drm` set and no provider registered now resolves `{result: false, code: "noProvider"}` instead of the old `notSupported` refusal; the plugin still never imports drm-kit — only the host app's adapter does.
+
 ### Changed
 - **iOS:** the minimum is iOS 15 (was iOS 18). The subtitle retry delays use `Task.sleep(nanoseconds:)` and subtitle language codes fall back to `Locale.languageCode` below iOS 16 (Story 58.2).
 - **Published as `@dwbn/capacitor-video-player`.** Before, this fork was used from git under the upstream name `@brylsherbert/capacitor-video-player`. To switch, replace the dependency, update imports, and run `npx cap sync`.
