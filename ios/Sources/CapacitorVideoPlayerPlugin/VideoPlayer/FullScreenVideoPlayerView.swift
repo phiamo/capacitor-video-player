@@ -135,6 +135,9 @@ open class FullScreenVideoPlayerView: UIView {
     var positionUpdateObserver: Any?
     var mediaSelectionObserver: NSKeyValueObservation?
     private var _positionUpdateInterval: Double = 5.0
+    /// Story 58.4: host-registered FairPlay session, opened by the plugin before this view is
+    /// built. `nil` for plain (non-DRM) playback.
+    private var drmSession: VideoDrmSession?
     /// Suppress subtitle bridge events during initial track selection / KVO noise (see analytics subtitle_change notes).
     private var suppressSubtitleBridgeEvents = true
     private var subtitleBridgeUnsuppressScheduled = false
@@ -145,7 +148,8 @@ open class FullScreenVideoPlayerView: UIView {
          stHeaders: [String: String]?, stOptions: [String: Any]?,
          title: String?, smallTitle: String?, artwork: String?,
          subtitleTracks: [[String: Any]]?,
-         selectedSubtitleId: String?, positionUpdateInterval: Double = 5.0) {
+         selectedSubtitleId: String?, positionUpdateInterval: Double = 5.0,
+         drmSession: VideoDrmSession? = nil) {
         //self._videoPath = videoPath
         self._url = url
         self._subtitleTracks = subtitleTracks
@@ -237,6 +241,15 @@ open class FullScreenVideoPlayerView: UIView {
 
         self.isPlaying = false
         super.init(frame: .zero)
+
+        // Story 58.4: attach the DRM session (if any) before any `AVPlayerItem` is built from
+        // `videoAsset` — `initializeAsync()` below is the first place one gets created.
+        self.drmSession = drmSession
+        if let drmSession = drmSession {
+            drmSession.attach(to: self.videoAsset)
+            drmSession.start()
+        }
+
         self.initialize()
         self.addObservers()
     }
@@ -2685,14 +2698,18 @@ open class FullScreenVideoPlayerView: UIView {
     deinit {
         Self.logger.debug("🗑️ FullScreenVideoPlayerView deinit called")
         self.removeObservers()
+        // Story 58.4: `release()` is idempotent (drm-kit `FairPlaySession` guarantees this), so a
+        // second call here after `cleanup()` already released it is safe.
+        self.drmSession?.release()
     }
-    
+
     // MARK: - Public cleanup method for manual disposal
-    
+
     @objc func cleanup() {
         Self.logger.debug("🧹 Manual cleanup called")
         self.removeObservers()
-        
+        self.drmSession?.release()
+
         // Force immediate memory cleanup
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             autoreleasepool {

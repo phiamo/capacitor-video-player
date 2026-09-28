@@ -301,10 +301,10 @@ export interface capVideoPlayerOptions {
      */
     seektime?: number;
     /**
-     * Optional DRM descriptor fields (API names). Android attaches Widevine through a
-     * host-registered provider. Token URL, heartbeat URL, and Bearer live on that
-     * provider, not here. FairPlay fields may be present and are ignored on Android.
-     * iOS and web refuse this option.
+     * Optional DRM descriptor fields (API names). Android and iOS attach Widevine/FairPlay
+     * through a host-registered provider. Token URL, heartbeat URL, and Bearer live on that
+     * provider, not here. FairPlay fields are ignored on Android; `widevineLicenseUrl` is
+     * ignored on iOS. Web refuses this option.
      */
     drm?: capVideoDrmOptions;
 }
@@ -434,8 +434,9 @@ export interface capVideoPlayerResult {
      */
     message?: string;
     /**
-     * Machine-readable failure: `noProvider` (Android, drm set but host did not
-     * register a provider) or `notSupported` (iOS/web when `drm` is set).
+     * Machine-readable failure: `noProvider` (Android or iOS, `drm` set but the host did not
+     * register a provider) or `notSupported` (web, when `drm` is set — iOS returns `noProvider`
+     * since Story 58.4).
      */
     code?: string;
 }
@@ -539,7 +540,7 @@ export interface capVideoDrmOptions {
     playbackSessionId?: string;
     renewalCredential?: string;
     streamLimit?: capVideoDrmStreamLimit;
-    /** Present on the descriptor; ignored on Android (FairPlay is Epic 58). */
+    /** Consumed by the iOS FairPlay provider (Story 58.4); ignored on Android. */
     fairplayLicenseUrl?: string;
     fairplayCertificateUrl?: string;
 }

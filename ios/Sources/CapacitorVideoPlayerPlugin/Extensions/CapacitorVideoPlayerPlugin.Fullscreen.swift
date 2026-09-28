@@ -165,6 +165,24 @@ extension CapacitorVideoPlayerPlugin {
 
                 self.resetInitialFullscreenPlaybackState()
 
+                let errorPlayerId = playerId
+                let drmAttempt = VideoDrm.open(self.drmOptions) { [weak self] error in
+                    self?.notifyListeners(
+                        "jeepCapVideoPlayerError",
+                        data: VideoDrm.errorListenerData(fromPlayerId: errorPlayerId, error: error),
+                        retainUntilConsumed: true
+                    )
+                }
+                if drmAttempt.failureCode == VideoDrm.codeNoProvider {
+                    call.resolve([
+                        "result": false,
+                        "method": "createVideoPlayerFullScreenView",
+                        "code": VideoDrm.codeNoProvider
+                    ])
+                    return
+                }
+                let drmSession = drmAttempt.session
+
                 let fullscreenView = self.implementation.createFullscreenPlayer(
                     playerId: playerId, videoUrl: videoUrl,
                     rate: rate, exitOnEnd: exitOnEnd, loopOnEnd: loopOnEnd,
@@ -176,7 +194,8 @@ extension CapacitorVideoPlayerPlugin {
                     title: title, smallTitle: smallTitle, artwork: artwork,
                     subtitleTracks: subtitleTracks,
                     selectedSubtitleId: selectedSubtitleId,
-                    positionUpdateInterval: positionUpdateInterval)
+                    positionUpdateInterval: positionUpdateInterval,
+                    drmSession: drmSession)
                 self.videoPlayerFullScreenView = fullscreenView
                 if backModeEnabled {
                     self.bgPlayer = self.videoPlayerFullScreenView?.videoPlayer.player

@@ -52,6 +52,9 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var showControls: Bool = true
     var displayMode: String = "all"
     var headers: [String: String]?
+    /// Story 58.4: `initPlayer` `drm` option, held until the fullscreen view is created and a
+    /// `VideoDrmSession` is opened from the registered provider.
+    var drmOptions: JSObject?
     var title: String?
     var smallTitle: String?
     var artwork: String?
@@ -156,15 +159,19 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     // swiftlint:disable cyclomatic_complexity
     @objc func initPlayer(_ call: CAPPluginCall) {
         self.call = call
-        
-        if call.getObject("drm") != nil {
-            call.resolve([
-                "result": false,
-                "method": "initPlayer",
-                "code": "notSupported",
-                "message": "DRM not supported on this platform yet"
-            ])
-            return
+
+        if let drm = call.getObject("drm") {
+            if VideoDrm.getProvider() == nil {
+                call.resolve([
+                    "result": false,
+                    "method": "initPlayer",
+                    "code": VideoDrm.codeNoProvider
+                ])
+                return
+            }
+            self.drmOptions = drm
+        } else {
+            self.drmOptions = nil
         }
 
         // Reset dismissal state for new player

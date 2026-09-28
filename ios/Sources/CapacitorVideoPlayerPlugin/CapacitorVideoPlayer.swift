@@ -11,7 +11,9 @@ enum CapacitorVideoPlayerError: Error {
         return value
     }
     // swiftlint:disable function_parameter_count
-    @objc public func createFullscreenPlayer(playerId: String,
+    // Not @objc: `drmSession: VideoDrmSession?` (Story 58.4) is a pure-Swift protocol type and
+    // cannot be represented in Objective-C. Only called from Swift (CapacitorVideoPlayerPlugin.Fullscreen.swift).
+    public func createFullscreenPlayer(playerId: String,
                                              videoUrl: URL,
                                              rate: Float,
                                              exitOnEnd: Bool,
@@ -28,7 +30,8 @@ enum CapacitorVideoPlayerError: Error {
                                              artwork: String?,
                                              subtitleTracks: [[String: Any]]?,
                                              selectedSubtitleId: String?,
-                                             positionUpdateInterval: Double
+                                             positionUpdateInterval: Double,
+                                             drmSession: VideoDrmSession? = nil
 
     ) -> FullScreenVideoPlayerView {
 
@@ -42,7 +45,8 @@ enum CapacitorVideoPlayerError: Error {
             title: title, smallTitle: smallTitle, artwork: artwork,
             subtitleTracks: subtitleTracks,
             selectedSubtitleId: selectedSubtitleId,
-            positionUpdateInterval: positionUpdateInterval)
+            positionUpdateInterval: positionUpdateInterval,
+            drmSession: drmSession)
         return videoPlayerFullScreenView
     }
 

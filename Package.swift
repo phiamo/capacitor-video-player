@@ -22,6 +22,13 @@ let package = Package(
             path: "ios/Sources/CapacitorVideoPlayerPlugin",
             swiftSettings: [
                 .swiftLanguageMode(.v5),
+            ]),
+        .testTarget(
+            name: "CapacitorVideoPlayerPluginTests",
+            dependencies: ["CapacitorVideoPlayerPlugin"],
+            path: "ios/Tests/CapacitorVideoPlayerPluginTests",
+            swiftSettings: [
+                .swiftLanguageMode(.v5),
             ])
     ]
 )
