@@ -53,23 +53,18 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             return handleSubtitlePlaylistRequest(loadingRequest: loadingRequest)
         }
         
-        // Handle master playlist requests - inject subtitle tracks
-        // Master playlist requests typically:
-        // 1. Have requestedOffset == 0 (start of file)
-        // 2. Have requestedLength > 0 but relatively small (master playlists are text)
-        // 3. Contain .m3u8 in URL or are the initial request
-        if let dataRequest = dataRequest,
+        // Handle master/variant playlist requests - inject subtitle tracks.
+        // Identify playlists by URL (`.m3u8`/`manifest`) only. A requestedLength-based fallback
+        // was here before but also matched small BINARY requests (CMAF init segments, short
+        // media segments) on fMP4-packaged streams; decoding those as UTF-8 text failed, which
+        // AVFoundation's segment pump treated as a transient network error and retried forever —
+        // manifesting as an endless FairPlay key-request retry loop (CoreMediaErrorDomain -15622)
+        // and a stuck loading spinner (video only; audio never installs this delegate).
+        let isPlaylistRequest = requestString.contains(".m3u8") || requestString.contains("manifest")
+        if isPlaylistRequest, let dataRequest = dataRequest,
            dataRequest.requestedOffset == 0,
            dataRequest.requestedLength > 0 {
-            
-            // Check if this is a master playlist request
-            let isMasterPlaylist = requestString.contains(".m3u8") || 
-                                   requestString.contains("manifest") ||
-                                   (dataRequest.requestedLength < 50000) // Master playlists are typically small (< 50KB)
-            
-            if isMasterPlaylist {
-                return handleMasterPlaylistRequest(loadingRequest: loadingRequest)
-            }
+            return handleMasterPlaylistRequest(loadingRequest: loadingRequest)
         }
         
         // For other requests (video/audio fragments), redirect to original URL
