@@ -303,9 +303,18 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 let isDefault = (track["isDefault"] as? Bool) == true
                 let defaultAttr = isDefault ? ",DEFAULT=YES" : ",DEFAULT=NO"
                 
-                // FORCED=NO explicitly marks these as optional (non-forced) subtitles
-                // This prevents the warning about non-forced-only media selection
-                let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=YES\(defaultAttr),FORCED=NO,URI=\"\(subtitlePlaylistUrl)\""
+                // FORCED=NO marks these as optional (non-forced) subtitles -- correct, but on its
+                // own it does NOT stop AVFoundation from trying to auto-select one: AUTOSELECT=YES
+                // invites -[AVPlayerItem selectMediaOptionAutomaticallyInMediaSelectionGroup:] to
+                // pick a track based on system language/accessibility settings. When the device's
+                // caption display mode is the iOS default ("forced-only" -- Settings > Accessibility
+                // > Subtitles & Captioning off), that automatic pick of a non-forced track is
+                // rejected ("Received a non-forced-only media selection ... when display type was
+                // forced-only"), which leaves the track highlighted in the CC menu but not actually
+                // rendering cues, even after a manual re-select. AUTOSELECT=NO keeps this track out
+                // of that automatic path entirely; users can still pick it manually from the CC menu,
+                // which is a separate, unaffected selection path.
+                let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=NO\(defaultAttr),FORCED=NO,URI=\"\(subtitlePlaylistUrl)\""
                 subtitleMediaLines.append(mediaLine)
             }
             
