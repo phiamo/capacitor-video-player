@@ -253,7 +253,11 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     
     // MARK: - Playlist Modification
 
-    private func injectSubtitlesIntoPlaylist(playlistString: String) -> String {
+    // internal (not private): unit-tested directly via @testable import, see
+    // HLSSubtitleResourceLoaderDelegateTests -- exercising the real resourceLoader entry point
+    // would need mocking AVAssetResourceLoadingRequest/URLSession, which isn't worth it for a
+    // pure string-transform function.
+    func injectSubtitlesIntoPlaylist(playlistString: String) -> String {
         let lines = playlistString.components(separatedBy: .newlines)
         var modifiedLines: [String] = []
         
