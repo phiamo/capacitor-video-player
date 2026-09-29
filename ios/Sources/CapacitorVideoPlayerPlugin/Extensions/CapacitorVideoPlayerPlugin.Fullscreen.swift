@@ -15,6 +15,10 @@ extension CapacitorVideoPlayerPlugin {
 
     /// Duration to suppress spurious KVO dismiss while AVPlayerViewController is presenting (matches app grace).
     private static let nativeFullscreenOpenHoldSeconds: TimeInterval = 2.0
+    /// Poll interval/attempt count for `retryFullscreenPlaybackIfStalled` -- ~8s total, generous
+    /// for a FairPlay SPC/CKC round trip (observed 2-11s for protected content with multiple keys).
+    private static let fullscreenPlaybackRetryIntervalSeconds: TimeInterval = 0.8
+    private static let fullscreenPlaybackRetryAttempts = 10
 
     // MARK: - initial playback (present + ready gate)
 
@@ -43,6 +47,25 @@ extension CapacitorVideoPlayerPlugin {
             self.initialSeekSeconds = 0
         } else {
             vPFSV.play()
+        }
+    }
+
+    /// A single one-shot readiness check previously left playback stuck at rate 0 forever if the
+    /// player item became ready only after that check fired -- plausible for protected content,
+    /// where FairPlay SPC/CKC key negotiation can take several seconds (observed 2-11s here).
+    /// Poll instead, re-arming `startFullscreenPlaybackIfNeeded()` each tick, until playback
+    /// actually starts (rate > 0) or attempts run out.
+    func retryFullscreenPlaybackIfStalled(attemptsRemaining: Int) {
+        guard attemptsRemaining > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.fullscreenPlaybackRetryIntervalSeconds) { [weak self] in
+            guard let self = self, self.mode == "fullscreen" else { return }
+            if (self.videoPlayerFullScreenView?.player?.rate ?? 0) > 0 {
+                return
+            }
+            self.initialFullscreenPlaybackStarted = false
+            self.videoPlayerFullScreenView?.markPresentAudioSessionActive()
+            self.startFullscreenPlaybackIfNeeded()
+            self.retryFullscreenPlaybackIfStalled(attemptsRemaining: attemptsRemaining - 1)
         }
     }
 
@@ -233,14 +256,7 @@ extension CapacitorVideoPlayerPlugin {
                         self.videoPlayerFullScreenView?.markPresentAudioSessionActive()
                         self.isFullscreenPresentCompleted = true
                         self.startFullscreenPlaybackIfNeeded()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                            guard let self = self else { return }
-                            if (self.videoPlayerFullScreenView?.player?.rate ?? 0) == 0 {
-                                self.initialFullscreenPlaybackStarted = false
-                                self.videoPlayerFullScreenView?.markPresentAudioSessionActive()
-                                self.startFullscreenPlaybackIfNeeded()
-                            }
-                        }
+                        self.retryFullscreenPlaybackIfStalled(attemptsRemaining: Self.fullscreenPlaybackRetryAttempts)
                         call.resolve([
                             "result": true,
                             "method": "createVideoPlayerFullScreenView",

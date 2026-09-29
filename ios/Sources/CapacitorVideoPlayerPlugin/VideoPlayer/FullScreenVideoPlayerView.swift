@@ -2889,7 +2889,17 @@ open class FullScreenVideoPlayerView: UIView {
     @objc func setCurrentTimeThenPlay(time: Double) {
         self._initialPlaybackStarted = true
         self._skipAudioSessionReconfigurationForNextPlay = true
+        self.performInitialSeekThenPlay(time: time, retriesRemaining: 3)
+    }
 
+    /// `AVPlayer.seek(to:completionHandler:)` reports `finished == false` when the seek was
+    /// interrupted or superseded -- e.g. the player item's state churning while a FairPlay key
+    /// request is still in flight for a protected asset. Previously we called `play()`
+    /// unconditionally even on `finished == false`, silently starting from wherever the player
+    /// actually was (its default position, usually 0) instead of the requested one -- video
+    /// handoff would open at 0:00 instead of resuming where audio left off. Retry a few times
+    /// before giving up and playing from the current position.
+    private func performInitialSeekThenPlay(time: Double, retriesRemaining: Int) {
         let seekTime = CMTime(seconds: time, preferredTimescale: 600)
         self.player?.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             guard let self = self else { return }
@@ -2897,8 +2907,12 @@ open class FullScreenVideoPlayerView: UIView {
                 if finished {
                     self._currentTime = time
                     self.postSeekBridgeEvent(fromSeconds: 0, toSeconds: time)
+                    self.play()
+                } else if retriesRemaining > 0 {
+                    self.performInitialSeekThenPlay(time: time, retriesRemaining: retriesRemaining - 1)
+                } else {
+                    self.play()
                 }
-                self.play()
             }
         }
     }
