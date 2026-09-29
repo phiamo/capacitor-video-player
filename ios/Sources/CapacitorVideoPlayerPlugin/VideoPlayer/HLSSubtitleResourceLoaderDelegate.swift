@@ -239,9 +239,31 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     }
     
     // MARK: - Playlist Modification
-    
-    private func injectSubtitlesIntoPlaylist(playlistString: String) -> String {
+
+    /// Multi-DRM manifests (Shaka Packager et al.) declare the same content key twice — once as
+    /// Widevine's common-PSSH `KEYFORMAT="urn:uuid:edef8ba9-…"`, once as FairPlay's
+    /// `KEYFORMAT="com.apple.streamingkeydelivery"` — so each platform's player picks the one it
+    /// understands. On iOS 15.8 AVFoundation does not reliably do that selection itself: with both
+    /// `#EXT-X-KEY` lines present it never calls into our registered `AVContentKeySession` at all,
+    /// and the key request hangs forever (`CoreMediaErrorDomain -15622`, endless retry, stuck
+    /// loading spinner) instead of surfacing as our typed DRM error. Audio manifests only ever
+    /// carry the single FairPlay line and are unaffected. Only filters when a
+    /// `com.apple.streamingkeydelivery` line is present, so non-DRM/non-multi-DRM playlists pass
+    /// through untouched.
+    private func keepOnlyFairPlayKeyLines(_ playlistString: String) -> String {
         let lines = playlistString.components(separatedBy: .newlines)
+        let fairPlayFormat = "KEYFORMAT=\"com.apple.streamingkeydelivery\""
+        guard lines.contains(where: { $0.hasPrefix("#EXT-X-KEY:") && $0.contains(fairPlayFormat) }) else {
+            return playlistString
+        }
+        let filtered = lines.filter { line in
+            !line.hasPrefix("#EXT-X-KEY:") || line.contains(fairPlayFormat)
+        }
+        return filtered.joined(separator: "\n")
+    }
+
+    private func injectSubtitlesIntoPlaylist(playlistString: String) -> String {
+        let lines = keepOnlyFairPlayKeyLines(playlistString).components(separatedBy: .newlines)
         var modifiedLines: [String] = []
         
         // Check if we have subtitle tracks
