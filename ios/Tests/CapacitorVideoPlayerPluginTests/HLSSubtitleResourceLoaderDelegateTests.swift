@@ -80,4 +80,33 @@ final class HLSSubtitleResourceLoaderDelegateTests: XCTestCase {
         XCTAssertFalse(result.contains("EXT-X-MEDIA"))
         XCTAssertTrue(result.contains("CLOSED-CAPTIONS=NONE"))
     }
+
+    // MARK: - X-TIMESTAMP-MAP (VOD subtitle cue-to-media-timeline mapping)
+
+    func test_injectTimestampMap_insertsHeaderAfterWebvttLine() {
+        let vtt = "WEBVTT\n\n00:00:07.793 --> 00:00:12.899\nHello"
+
+        let result = HLSSubtitleResourceLoaderDelegate.injectTimestampMap(into: vtt)
+
+        let lines = result.components(separatedBy: "\n")
+        XCTAssertEqual(lines[0], "WEBVTT")
+        XCTAssertEqual(lines[1], "X-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000")
+        XCTAssertTrue(result.contains("00:00:07.793 --> 00:00:12.899\nHello"))
+    }
+
+    func test_injectTimestampMap_isIdempotent() {
+        let alreadyMapped = "WEBVTT\nX-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000\n\ncue"
+
+        let result = HLSSubtitleResourceLoaderDelegate.injectTimestampMap(into: alreadyMapped)
+
+        XCTAssertEqual(result, alreadyMapped)
+    }
+
+    func test_injectTimestampMap_nonVttContent_isUnchanged() {
+        let notVtt = "1\n00:00:07,793 --> 00:00:12,899\nHello"
+
+        let result = HLSSubtitleResourceLoaderDelegate.injectTimestampMap(into: notVtt)
+
+        XCTAssertEqual(result, notVtt)
+    }
 }

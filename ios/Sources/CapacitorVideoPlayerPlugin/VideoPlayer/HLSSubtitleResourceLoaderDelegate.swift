@@ -23,13 +23,18 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     
     // Subtitle playlist URL prefix
     private let subtitlePlaylistUrlPrefix = "\(HLSSubtitleResourceLoaderDelegate.customSchemePrefix)SubtitlePlaylist"
-    
+    // Subtitle segment (actual WebVTT body) URL prefix -- serves the already-fetched VTT content
+    // directly, with X-TIMESTAMP-MAP injected, instead of pointing AVFoundation at the raw backend
+    // URL and letting it re-fetch blind (see handleSubtitleContentRequest).
+    private let subtitleContentUrlPrefix = "\(HLSSubtitleResourceLoaderDelegate.customSchemePrefix)SubtitleContent"
+
     private let session: URLSession
     private let subtitleTracks: [[String: Any]]
     private let bearerToken: String?
     private let originalVideoUrl: URL
-    
-    // Cache for subtitle playlists
+
+    // trackIdentifier -> WebVTT body (with X-TIMESTAMP-MAP already injected), populated by
+    // handleSubtitlePlaylistRequest and served by handleSubtitleContentRequest.
     private var subtitlePlaylists: [String: String] = [:]
     
     init(subtitleTracks: [[String: Any]], bearerToken: String?, originalVideoUrl: URL) {
@@ -59,6 +64,14 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         // return false to let AVFoundation route it to the correct delegate instead.
         if requestString.hasPrefix("skd://") {
             return false
+        }
+
+        // Handle subtitle segment (WebVTT body) requests -- must be checked before the playlist
+        // prefix since subtitleContentUrlPrefix ("...SubtitleContent") is not a prefix of
+        // subtitlePlaylistUrlPrefix ("...SubtitlePlaylist") or vice versa, but keep the order
+        // deliberate in case either prefix ever changes.
+        if requestString.hasPrefix(subtitleContentUrlPrefix) {
+            return handleSubtitleContentRequest(loadingRequest: loadingRequest)
         }
 
         // Handle subtitle playlist requests
@@ -235,9 +248,19 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 return
             }
             
-            // Create HLS subtitle playlist from VTT/SRT content
-            let playlist = self.createSubtitlePlaylistFromVTT(vttContent: subtitleContent, subtitleUrl: subtitleUrl)
-            
+            // Cache the VTT body (with X-TIMESTAMP-MAP injected -- required by the HLS spec to
+            // map a WebVTT segment's own cue timestamps onto the actual media timeline; without
+            // it AVFoundation has no way to align cues starting at e.g. 00:00:07 with playback
+            // that may have started well into the asset) for handleSubtitleContentRequest to
+            // serve directly -- no second network round trip to the real backend URL, and no
+            // dependence on that URL alone carrying valid auth.
+            self.subtitlePlaylists[trackIdentifier] = Self.injectTimestampMap(into: subtitleContent)
+
+            // Create HLS subtitle playlist pointing at OUR cached content, not the raw backend URL
+            let playlist = self.createSubtitlePlaylistFromVTT(vttContent: subtitleContent, trackIdentifier: trackIdentifier)
+            NSLog("[SubtitleDelegate-DIAG] vtt fetched %d bytes, head=%@", subtitleContent.count, String(subtitleContent.prefix(80)))
+            NSLog("[SubtitleDelegate-DIAG] wrapper playlist:\n%@", playlist)
+
             // Send playlist back
             if let playlistData = playlist.data(using: .utf8) {
                 loadingRequest.dataRequest?.respond(with: playlistData)
@@ -344,34 +367,34 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     
     // MARK: - VTT to Playlist Conversion
     
-    private func createSubtitlePlaylistFromVTT(vttContent: String, subtitleUrl: URL) -> String {
+    private func createSubtitlePlaylistFromVTT(vttContent: String, trackIdentifier: String) -> String {
         // Parse VTT to find the last timestamp (matching C# implementation)
         let noWhitespaceVtt = vttContent.replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: "\n", with: "")
             .replacingOccurrences(of: "\r", with: "")
-        
+
         guard let arrowRange = noWhitespaceVtt.range(of: "-->", options: .backwards) else {
             Self.logger.warning("Could not find timestamp in VTT, using default duration")
-            return createDefaultSubtitlePlaylist(subtitleUrl: subtitleUrl)
+            return createDefaultSubtitlePlaylist(trackIdentifier: trackIdentifier)
         }
-        
+
         // Get substring after the arrow
         let arrowIndex = arrowRange.upperBound
         let afterArrow = String(noWhitespaceVtt[arrowIndex...])
-        
+
         guard let firstColon = afterArrow.firstIndex(of: ":"),
               let period = afterArrow.firstIndex(of: "."),
               firstColon > afterArrow.startIndex else {
             Self.logger.warning("Could not parse timestamp, using default duration")
-            return createDefaultSubtitlePlaylist(subtitleUrl: subtitleUrl)
+            return createDefaultSubtitlePlaylist(trackIdentifier: trackIdentifier)
         }
-        
+
         // Extract time string from firstColon - 2 to period (matching C# logic)
         // Ensure we have enough characters before firstColon
         let offset = min(2, afterArrow.distance(from: afterArrow.startIndex, to: firstColon))
         let startIndex = afterArrow.index(firstColon, offsetBy: -offset)
         let timeString = String(afterArrow[startIndex..<period])
-        
+
         // Parse time string (format: HH:MM:SS)
         let timeComponents = timeString.components(separatedBy: ":")
         guard timeComponents.count == 3,
@@ -379,12 +402,13 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
               let minutes = Int(timeComponents[1]),
               let seconds = Int(timeComponents[2]) else {
             Self.logger.warning("Could not parse time components, using default duration")
-            return createDefaultSubtitlePlaylist(subtitleUrl: subtitleUrl)
+            return createDefaultSubtitlePlaylist(trackIdentifier: trackIdentifier)
         }
-        
+
         let totalSeconds = hours * 3600 + minutes * 60 + seconds
-        
-        // Create HLS subtitle playlist
+
+        // Create HLS subtitle playlist -- segment points at OUR cached content URL, not the raw
+        // backend one, so handleSubtitleContentRequest serves the X-TIMESTAMP-MAP-tagged body.
         let playlistLines: [String] = [
             "#EXTM3U",
             "#EXT-X-TARGETDURATION:\(totalSeconds)",
@@ -392,14 +416,14 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             "#EXT-X-MEDIA-SEQUENCE:0",
             "#EXT-X-PLAYLIST-TYPE:VOD",
             "#EXTINF:\(totalSeconds),",
-            subtitleUrl.absoluteString,
+            "\(subtitleContentUrlPrefix)://\(trackIdentifier).vtt",
             "#EXT-X-ENDLIST"
         ]
-        
+
         return playlistLines.joined(separator: "\n")
     }
-    
-    private func createDefaultSubtitlePlaylist(subtitleUrl: URL) -> String {
+
+    private func createDefaultSubtitlePlaylist(trackIdentifier: String) -> String {
         let playlistLines: [String] = [
             "#EXTM3U",
             "#EXT-X-TARGETDURATION:3600",
@@ -407,11 +431,57 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             "#EXT-X-MEDIA-SEQUENCE:0",
             "#EXT-X-PLAYLIST-TYPE:VOD",
             "#EXTINF:3600,",
-            subtitleUrl.absoluteString,
+            "\(subtitleContentUrlPrefix)://\(trackIdentifier).vtt",
             "#EXT-X-ENDLIST"
         ]
-        
+
         return playlistLines.joined(separator: "\n")
+    }
+
+    /// Inserts the HLS-required `X-TIMESTAMP-MAP` header right after the `WEBVTT` line, mapping
+    /// this VTT's own (LOCAL) cue timestamps onto the media timeline at MPEGTS 0 -- i.e. "this
+    /// VTT's internal 00:00:00 is the asset's own 00:00:00". Our cue timestamps already come from
+    /// SRT files authored against the full asset duration (not per-segment), so this 1:1 mapping
+    /// is correct; without it AVFoundation has no documented way to reconcile a single-file VTT
+    /// segment's cues with playback that started well into a VOD asset. No-op if already present
+    /// (defensive; our own content never has one) or if the content isn't a WEBVTT file at all.
+    /// internal (not private): unit-tested directly, see HLSSubtitleResourceLoaderDelegateTests.
+    static func injectTimestampMap(into vttContent: String) -> String {
+        guard vttContent.hasPrefix("WEBVTT"), !vttContent.contains("X-TIMESTAMP-MAP") else {
+            return vttContent
+        }
+        guard let firstLineEnd = vttContent.firstIndex(where: { $0.isNewline }) else {
+            return vttContent
+        }
+        let header = String(vttContent[..<firstLineEnd])
+        let rest = String(vttContent[firstLineEnd...])
+        return "\(header)\nX-TIMESTAMP-MAP=MPEGTS:0,LOCAL:00:00:00.000\(rest)"
+    }
+
+    // MARK: - Subtitle Content Handling
+
+    private func handleSubtitleContentRequest(loadingRequest: AVAssetResourceLoadingRequest) -> Bool {
+        guard let requestUrl = loadingRequest.request.url else {
+            Self.logger.error("Invalid subtitle content request URL")
+            loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
+            return true
+        }
+
+        let requestString = requestUrl.absoluteString
+        let urlComponents = requestString.replacingOccurrences(of: subtitleContentUrlPrefix + "://", with: "")
+        let trackIdentifier = urlComponents.components(separatedBy: ".").first ?? ""
+
+        guard let content = subtitlePlaylists[trackIdentifier], let data = content.data(using: .utf8) else {
+            Self.logger.error("No cached subtitle content for: \(trackIdentifier, privacy: .public)")
+            loadingRequest.finishLoading(with: NSError(domain: "HLSSubtitleLoader", code: -1, userInfo: nil))
+            return true
+        }
+
+        loadingRequest.contentInformationRequest?.contentType = "text/vtt"
+        loadingRequest.contentInformationRequest?.contentLength = Int64(data.count)
+        loadingRequest.dataRequest?.respond(with: data)
+        loadingRequest.finishLoading()
+        return true
     }
     
     // MARK: - Redirect Handling
