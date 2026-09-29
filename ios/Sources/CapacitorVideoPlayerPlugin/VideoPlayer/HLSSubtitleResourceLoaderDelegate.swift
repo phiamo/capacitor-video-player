@@ -47,7 +47,20 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         
         let requestString = loadingRequest.request.url?.absoluteString ?? ""
         let dataRequest = loadingRequest.dataRequest
-        
+
+        // FairPlay key requests (`skd://<kid>:<iv>`) also reach this delegate once it's set as
+        // the asset's AVAssetResourceLoaderDelegate -- they are not ours: DRM key delivery is
+        // owned by the app's registered AVContentKeySession (drm-kit's FairPlaySession), routed
+        // via AVContentKeyRecipient, not AVAssetResourceLoader. Returning true/handled here (the
+        // old fallthrough to handleRedirectRequest wrapped the skd:// URL in a no-op 302 "redirect"
+        // and finished the load) silently steals every key request before AVContentKeySession ever
+        // sees it: the app's FairPlay session's error callback never fires, AVFoundation retries
+        // forever, and the video hangs on its loading spinner (CoreMediaErrorDomain -15622). Must
+        // return false to let AVFoundation route it to the correct delegate instead.
+        if requestString.hasPrefix("skd://") {
+            return false
+        }
+
         // Handle subtitle playlist requests
         if requestString.hasPrefix(subtitlePlaylistUrlPrefix) {
             return handleSubtitlePlaylistRequest(loadingRequest: loadingRequest)
@@ -66,7 +79,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
            dataRequest.requestedLength > 0 {
             return handleMasterPlaylistRequest(loadingRequest: loadingRequest)
         }
-        
+
         // For other requests (video/audio fragments), redirect to original URL
         return handleRedirectRequest(loadingRequest: loadingRequest, originalUrl: originalVideoUrl)
     }
@@ -130,7 +143,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             
             // Inject subtitle tracks into the playlist
             let modifiedPlaylist = self.injectSubtitlesIntoPlaylist(playlistString: playlistString)
-            
+
             // Send modified playlist back
             if let modifiedData = modifiedPlaylist.data(using: .utf8) {
                 loadingRequest.dataRequest?.respond(with: modifiedData)
@@ -240,30 +253,8 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     
     // MARK: - Playlist Modification
 
-    /// Multi-DRM manifests (Shaka Packager et al.) declare the same content key twice — once as
-    /// Widevine's common-PSSH `KEYFORMAT="urn:uuid:edef8ba9-…"`, once as FairPlay's
-    /// `KEYFORMAT="com.apple.streamingkeydelivery"` — so each platform's player picks the one it
-    /// understands. On iOS 15.8 AVFoundation does not reliably do that selection itself: with both
-    /// `#EXT-X-KEY` lines present it never calls into our registered `AVContentKeySession` at all,
-    /// and the key request hangs forever (`CoreMediaErrorDomain -15622`, endless retry, stuck
-    /// loading spinner) instead of surfacing as our typed DRM error. Audio manifests only ever
-    /// carry the single FairPlay line and are unaffected. Only filters when a
-    /// `com.apple.streamingkeydelivery` line is present, so non-DRM/non-multi-DRM playlists pass
-    /// through untouched.
-    private func keepOnlyFairPlayKeyLines(_ playlistString: String) -> String {
-        let lines = playlistString.components(separatedBy: .newlines)
-        let fairPlayFormat = "KEYFORMAT=\"com.apple.streamingkeydelivery\""
-        guard lines.contains(where: { $0.hasPrefix("#EXT-X-KEY:") && $0.contains(fairPlayFormat) }) else {
-            return playlistString
-        }
-        let filtered = lines.filter { line in
-            !line.hasPrefix("#EXT-X-KEY:") || line.contains(fairPlayFormat)
-        }
-        return filtered.joined(separator: "\n")
-    }
-
     private func injectSubtitlesIntoPlaylist(playlistString: String) -> String {
-        let lines = keepOnlyFairPlayKeyLines(playlistString).components(separatedBy: .newlines)
+        let lines = playlistString.components(separatedBy: .newlines)
         var modifiedLines: [String] = []
         
         // Check if we have subtitle tracks
