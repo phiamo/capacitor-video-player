@@ -7,7 +7,10 @@ let package = Package(
     products: [
         .library(
             name: "DwbnCapacitorVideoPlayer",
-            targets: ["CapacitorVideoPlayerPlugin"])
+            targets: ["CapacitorVideoPlayerPlugin"]),
+        .library(
+            name: "BrylsherbertCapacitorVideoPlayer",
+            targets: ["CapacitorVideoPlayerPlugin"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0")
