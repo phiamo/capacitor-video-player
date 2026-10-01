@@ -907,7 +907,7 @@ open class FullScreenVideoPlayerView: UIView {
         let delay = Double(retryCount + 1) * 0.5 // 0.5s, 1s, 1.5s, etc.
 
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard let self = self else { return }
 
             guard let playerItem = self.playerItem else {
@@ -1069,7 +1069,7 @@ open class FullScreenVideoPlayerView: UIView {
             let delay = Double(retryCount) * 0.5
 
             Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(delay))
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 guard let self = self else { return }
 
                 do {

@@ -1,5 +1,10 @@
 # Changelog
 
+## [8.3.1] - 2026-10-01
+
+### Fixed
+- **iOS:** SPM platform floor is iOS 15 again (was 18). `Locale.languageCode` and `Task.sleep` use iOS 15-safe APIs so host apps with deployment target 15 can archive.
+
 ## [8.3.0] - 2026-09-19
 
 ### Changed
