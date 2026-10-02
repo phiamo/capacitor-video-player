@@ -8,5 +8,6 @@
 import AVKit
 class PortraitAVPlayerController: AVPlayerViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        return .portrait    }
+        return .portrait
+    }
 }

@@ -176,6 +176,9 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
 
         // Reset dismissal state for new player
         self.isPlayerDismissed = false
+        isVideoEnded = false
+        isOpeningNativeFullscreen = false
+        isInPIPMode = false
         
         guard let mode = call.options["mode"] as? String else {
             let error: String = "Must provide a Mode " +

@@ -71,9 +71,26 @@ extension CapacitorVideoPlayerPlugin {
 
     // MARK: - topmostViewController
 
-    /// Walks the bridge hierarchy to find the VC that should receive `present()`.
+    private static func isPlayerPresentation(_ vc: UIViewController) -> Bool {
+        if vc is FullscreenPlayerContainerViewController || vc is AVPlayerViewController {
+            return true
+        }
+        if let nav = vc as? UINavigationController,
+           nav.viewControllers.contains(where: {
+               $0 is FullscreenPlayerContainerViewController || $0 is AVPlayerViewController
+           }) {
+            return true
+        }
+        return false
+    }
+
+    /// Walks the bridge hierarchy to find a VC that can present. Never returns a leftover
+    /// player container or `AVPlayerViewController` — presenting from those nests a second session.
     private func topmostViewController(from root: UIViewController) -> UIViewController {
         if let presented = root.presentedViewController {
+            if Self.isPlayerPresentation(presented) {
+                return root
+            }
             return topmostViewController(from: presented)
         }
         if let nav = root as? UINavigationController,
@@ -85,6 +102,25 @@ extension CapacitorVideoPlayerPlugin {
             return topmostViewController(from: selected)
         }
         return root
+    }
+
+    /// Presenter of the first leftover `AVPlayerViewController` in the tree, if any.
+    private func presenterOfLeftoverPlayer(from root: UIViewController) -> UIViewController? {
+        if let presented = root.presentedViewController {
+            if Self.isPlayerPresentation(presented) {
+                return root
+            }
+            return presenterOfLeftoverPlayer(from: presented)
+        }
+        if let nav = root as? UINavigationController,
+           let visible = nav.visibleViewController {
+            return presenterOfLeftoverPlayer(from: visible)
+        }
+        if let tab = root as? UITabBarController,
+           let selected = tab.selectedViewController {
+            return presenterOfLeftoverPlayer(from: selected)
+        }
+        return nil
     }
 
     // MARK: - clearStaleFullscreenPresentation
@@ -107,15 +143,30 @@ extension CapacitorVideoPlayerPlugin {
             return
         }
 
-        if bridgeRoot.presentedViewController != nil {
+        self.dismissLeftoverPlayers(from: bridgeRoot, completion: completion)
+    }
+
+    private func dismissLeftoverPlayers(from root: UIViewController, completion: @escaping () -> Void) {
+        if let presenter = presenterOfLeftoverPlayer(from: root) {
+            print("[CapacitorVideoPlayer] Dismissing leftover AVPlayerViewController before new fullscreen player")
+            Self.logger.debug("Dismissing leftover AVPlayerViewController before new fullscreen player")
+            presenter.dismiss(animated: false) { [weak self] in
+                guard let self = self else {
+                    completion()
+                    return
+                }
+                self.dismissLeftoverPlayers(from: root, completion: completion)
+            }
+            return
+        }
+        if root.presentedViewController != nil {
             print("[CapacitorVideoPlayer] Dismissing stale modal before new fullscreen player")
             Self.logger.debug("Dismissing stale presented view controller before new fullscreen player")
-            bridgeRoot.dismiss(animated: false) {
+            root.dismiss(animated: false) {
                 completion()
             }
             return
         }
-
         completion()
     }
 
@@ -172,6 +223,19 @@ extension CapacitorVideoPlayerPlugin {
                 }
 
                 let viewController = self.topmostViewController(from: bridgeRoot)
+
+                if Self.isPlayerPresentation(viewController) {
+                    let error: String =
+                        "Cannot present fullscreen player: leftover player is still presenting"
+                    print("[CapacitorVideoPlayer] \(error)")
+                    Self.logger.error("\(error, privacy: .public)")
+                    call.resolve([
+                        "result": false,
+                        "method": "createVideoPlayerFullScreenView",
+                        "message": error
+                    ])
+                    return
+                }
 
                 if viewController.presentedViewController != nil {
                     let error: String =
@@ -235,13 +299,17 @@ extension CapacitorVideoPlayerPlugin {
                     return
                 }
                 videoPlayer.delegate = self
+                videoPlayer.entersFullScreenWhenPlaybackBegins = false
+                let container = FullscreenPlayerContainerViewController(
+                    playerViewController: videoPlayer)
+                fullscreenView.fullscreenContainer = container
                 isOpeningNativeFullscreen = true
-                print("[CapacitorVideoPlayer] About to present AVPlayerViewController playerId=\(playerId)")
+                print("[CapacitorVideoPlayer] About to present fullscreen container playerId=\(playerId)")
                 Self.logger.debug(
-                    "About to present AVPlayerViewController for playerId=\(playerId, privacy: .public)")
-                viewController.present(videoPlayer, animated: true, completion: {
-                    print("[CapacitorVideoPlayer] AVPlayerViewController present completion fired")
-                    Self.logger.debug("AVPlayerViewController present completion fired")
+                    "About to present fullscreen container for playerId=\(playerId, privacy: .public)")
+                viewController.present(container, animated: true, completion: {
+                    print("[CapacitorVideoPlayer] fullscreen container present completion fired")
+                    Self.logger.debug("fullscreen container present completion fired")
                     DispatchQueue.main.asyncAfter(
                         deadline: .now() + Self.nativeFullscreenOpenHoldSeconds) {
                         isOpeningNativeFullscreen = false

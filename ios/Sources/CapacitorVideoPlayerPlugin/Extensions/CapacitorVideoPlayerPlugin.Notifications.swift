@@ -8,6 +8,7 @@
 
 import Foundation
 import MediaPlayer
+import AVKit
 import os
 
 // MARK: - Handle Notifications
@@ -153,6 +154,12 @@ extension CapacitorVideoPlayerPlugin {
         if self.isPlayerDismissed {
             return
         }
+        if let from = notification.object as? AVPlayerViewController,
+           let current = self.videoPlayerFullScreenView?.videoPlayer,
+           from !== current {
+            // Stale Done/X from the previous session after a second initPlayer.
+            return
+        }
 
         // Prefer live head, then last persisted tick/seek (survives WebView suspend / teardown races).
         var currentTime: Double = 0.0
@@ -200,7 +207,9 @@ extension CapacitorVideoPlayerPlugin {
     func playerFullscreenExit() {
         // Mark player as dismissed to prevent further calls
         self.isPlayerDismissed = true
-        
+        let container = self.videoPlayerFullScreenView?.fullscreenContainer
+        let presenter = container?.presentingViewController ?? self.bridge?.viewController
+
         if let vPFSV = self.videoPlayerFullScreenView {
             Self.logger.debug("Cleaning up video player on exit")
             
@@ -225,8 +234,7 @@ extension CapacitorVideoPlayerPlugin {
             
             Self.logger.debug("Video player cleanup completed")
         }
-        if let viewController = self.bridge?.viewController {
-            viewController.dismiss(animated: true, completion: {
+        presenter?.dismiss(animated: true, completion: {
                 if self.backModeEnabled {
                     if let audioSession = self.audioSession {
                         do {
@@ -239,7 +247,6 @@ extension CapacitorVideoPlayerPlugin {
                     }
                 }
             })
-        }
     }
 
     private func terminateNowPlayingInfo() {

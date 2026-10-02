@@ -115,6 +115,8 @@ open class FullScreenVideoPlayerView: UIView {
 
     var player: AVPlayer?
     var videoPlayer: AVPlayerViewController
+    /// Presented host that owns dismiss; `videoPlayer` is only a child of this container.
+    var fullscreenContainer: FullscreenPlayerContainerViewController?
     var videoAsset: AVURLAsset
     var playerItem: AVPlayerItem?
     var isPlaying: Bool
@@ -2349,7 +2351,8 @@ open class FullScreenVideoPlayerView: UIView {
         }
         self.videoPlayer.player = self.player
         self.videoPlayer.updatesNowPlayingInfoCenter = false
-        self.videoPlayer.isModalInPresentation = true
+        // Presented as a child of FullscreenPlayerContainerViewController — not as the modal.
+        self.videoPlayer.entersFullScreenWhenPlaybackBegins = false
         self.videoPlayer.allowsPictureInPicturePlayback = false
         if isPIPModeAvailable && self._pipEnabled {
             self.videoPlayer.allowsPictureInPicturePlayback = true
@@ -2698,6 +2701,8 @@ open class FullScreenVideoPlayerView: UIView {
         self.cleanupAudioSession()
         
         // Clean up video player
+        self.fullscreenContainer?.detachPlayer()
+        self.fullscreenContainer = nil
         self.videoPlayer.player = nil
         
         // Clean up subtitle time observer (for custom UILabel rendering)

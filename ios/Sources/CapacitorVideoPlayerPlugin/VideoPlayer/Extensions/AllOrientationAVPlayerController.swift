@@ -6,7 +6,9 @@
 //
 
 import AVKit
+
 class AllOrientationAVPlayerController: AVPlayerViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        return .all    }
+        return .all
+    }
 }

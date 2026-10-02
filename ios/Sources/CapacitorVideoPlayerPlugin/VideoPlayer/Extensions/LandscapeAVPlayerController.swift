@@ -8,5 +8,6 @@
 import AVKit
 class LandscapeAVPlayerController: AVPlayerViewController {
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        return .landscapeRight    }
+        return .landscapeRight
+    }
 }
