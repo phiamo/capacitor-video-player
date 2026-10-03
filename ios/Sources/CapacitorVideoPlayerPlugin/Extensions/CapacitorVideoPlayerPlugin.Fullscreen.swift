@@ -9,6 +9,7 @@
 import Foundation
 import Capacitor
 import AVKit
+import UIKit
 import os
 
 extension CapacitorVideoPlayerPlugin {
@@ -72,20 +73,46 @@ extension CapacitorVideoPlayerPlugin {
     // MARK: - topmostViewController
 
     private static func isPlayerPresentation(_ vc: UIViewController) -> Bool {
-        if vc is FullscreenPlayerContainerViewController || vc is AVPlayerViewController {
+        if vc is AVPlayerViewController {
             return true
         }
         if let nav = vc as? UINavigationController,
-           nav.viewControllers.contains(where: {
-               $0 is FullscreenPlayerContainerViewController || $0 is AVPlayerViewController
-           }) {
+           nav.viewControllers.contains(where: { $0 is AVPlayerViewController }) {
             return true
         }
         return false
     }
 
-    /// Walks the bridge hierarchy to find a VC that can present. Never returns a leftover
-    /// player container or `AVPlayerViewController` — presenting from those nests a second session.
+    static func presentedChainDescription(from root: UIViewController?) -> String {
+        var parts: [String] = []
+        var current = root
+        while let vc = current {
+            parts.append(String(describing: type(of: vc)))
+            current = vc.presentedViewController
+        }
+        return parts.isEmpty ? "(none)" : parts.joined(separator: " -> ")
+    }
+
+    func waitForFullscreenDismissalIfNeeded(completion: @escaping () -> Void) {
+        if !self.isFullscreenDismissalInFlight {
+            completion()
+            return
+        }
+        NSLog("[CapacitorVideoPlayer] waiting for in-flight fullscreen dismiss")
+        self.fullscreenDismissalWaiters.append(completion)
+    }
+
+    func finishFullscreenDismissalInFlight() {
+        self.isFullscreenDismissalInFlight = false
+        let waiters = self.fullscreenDismissalWaiters
+        self.fullscreenDismissalWaiters = []
+        for waiter in waiters {
+            waiter()
+        }
+    }
+
+    /// Walks the bridge hierarchy to find a VC that can present. Never returns an
+    /// `AVPlayerViewController` — presenting from a leftover player nests a second session.
     private func topmostViewController(from root: UIViewController) -> UIViewController {
         if let presented = root.presentedViewController {
             if Self.isPlayerPresentation(presented) {
@@ -127,47 +154,80 @@ extension CapacitorVideoPlayerPlugin {
 
     /// Clears retained fullscreen state and dismisses a stuck modal before a new `initPlayer` presentation.
     func clearStaleFullscreenPresentation(completion: @escaping () -> Void) {
-        self.resetInitialFullscreenPlaybackState()
-        if let vPFSV = self.videoPlayerFullScreenView {
-            Self.logger.debug("Clearing stale fullscreen view before new presentation")
-            vPFSV.pause()
-            vPFSV.cleanup()
-            vPFSV.videoPlayer.player = nil
-            self.videoPlayerFullScreenView = nil
-            self.bgPlayer = nil
-            self.videoPlayer = nil
-        }
+        self.waitForFullscreenDismissalIfNeeded { [weak self] in
+            guard let self = self else {
+                completion()
+                return
+            }
+            self.resetInitialFullscreenPlaybackState()
+            if let vPFSV = self.videoPlayerFullScreenView {
+                Self.logger.debug("Clearing stale fullscreen view before new presentation")
+                vPFSV.pause()
+                vPFSV.cleanup()
+                vPFSV.videoPlayer.player = nil
+                self.videoPlayerFullScreenView = nil
+                self.bgPlayer = nil
+                self.videoPlayer = nil
+            }
 
-        guard let bridgeRoot = self.bridge?.viewController else {
+            self.teardownFullscreenPlayerWindow()
+
+            guard let bridgeRoot = self.bridge?.viewController else {
+                completion()
+                return
+            }
+
+            self.dismissAllPresented(from: bridgeRoot, completion: completion)
+        }
+    }
+
+    /// Dismiss the entire presented stack from the Capacitor root. Presenting a new
+    /// `AVPlayerViewController` on top of a leftover one is what turns iOS 26 Close/X into Back.
+    private func dismissAllPresented(from root: UIViewController, completion: @escaping () -> Void) {
+        guard root.presentedViewController != nil else {
             completion()
             return
         }
-
-        self.dismissLeftoverPlayers(from: bridgeRoot, completion: completion)
+        let chain = Self.presentedChainDescription(from: root)
+        NSLog("[CapacitorVideoPlayer] dismissing presented stack %@", chain)
+        Self.logger.debug("dismissing presented stack \(chain, privacy: .public)")
+        root.dismiss(animated: false) { [weak self] in
+            guard let self = self else {
+                completion()
+                return
+            }
+            self.dismissAllPresented(from: root, completion: completion)
+        }
     }
 
-    private func dismissLeftoverPlayers(from root: UIViewController, completion: @escaping () -> Void) {
-        if let presenter = presenterOfLeftoverPlayer(from: root) {
-            print("[CapacitorVideoPlayer] Dismissing leftover AVPlayerViewController before new fullscreen player")
-            Self.logger.debug("Dismissing leftover AVPlayerViewController before new fullscreen player")
-            presenter.dismiss(animated: false) { [weak self] in
-                guard let self = self else {
-                    completion()
-                    return
-                }
-                self.dismissLeftoverPlayers(from: root, completion: completion)
-            }
+    func teardownFullscreenPlayerWindow() {
+        if let host = self.fullscreenPlayerHost, host.presentedViewController != nil {
+            host.dismiss(animated: false)
+        }
+        let appWindow = self.bridge?.viewController?.view.window
+        self.fullscreenPlayerWindow?.isHidden = true
+        self.fullscreenPlayerWindow = nil
+        self.fullscreenPlayerHost = nil
+        appWindow?.makeKeyAndVisible()
+    }
+
+    func presentFullscreenPlayer(_ videoPlayer: AVPlayerViewController, completion: @escaping () -> Void) {
+        self.teardownFullscreenPlayerWindow()
+        guard let scene = self.bridge?.viewController?.view.window?.windowScene else {
+            self.bridge?.viewController?.present(videoPlayer, animated: true, completion: completion)
             return
         }
-        if root.presentedViewController != nil {
-            print("[CapacitorVideoPlayer] Dismissing stale modal before new fullscreen player")
-            Self.logger.debug("Dismissing stale presented view controller before new fullscreen player")
-            root.dismiss(animated: false) {
-                completion()
-            }
-            return
-        }
-        completion()
+        let host = UIViewController()
+        host.view.backgroundColor = .black
+        let window = UIWindow(windowScene: scene)
+        window.windowLevel = .normal + 1
+        window.backgroundColor = .black
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        self.fullscreenPlayerWindow = window
+        self.fullscreenPlayerHost = host
+        NSLog("[CapacitorVideoPlayer] presenting AVPlayerViewController in fresh window")
+        host.present(videoPlayer, animated: true, completion: completion)
     }
 
     // MARK: - createVideoPlayerFullScreenView
@@ -212,34 +272,6 @@ extension CapacitorVideoPlayerPlugin {
 
                 guard let bridgeRoot = self.bridge?.viewController else {
                     let error: String = "No Capacitor bridge viewController available"
-                    print("[CapacitorVideoPlayer] \(error)")
-                    Self.logger.error("\(error, privacy: .public)")
-                    call.resolve([
-                        "result": false,
-                        "method": "createVideoPlayerFullScreenView",
-                        "message": error
-                    ])
-                    return
-                }
-
-                let viewController = self.topmostViewController(from: bridgeRoot)
-
-                if Self.isPlayerPresentation(viewController) {
-                    let error: String =
-                        "Cannot present fullscreen player: leftover player is still presenting"
-                    print("[CapacitorVideoPlayer] \(error)")
-                    Self.logger.error("\(error, privacy: .public)")
-                    call.resolve([
-                        "result": false,
-                        "method": "createVideoPlayerFullScreenView",
-                        "message": error
-                    ])
-                    return
-                }
-
-                if viewController.presentedViewController != nil {
-                    let error: String =
-                        "Cannot present fullscreen player: another view controller is already presented"
                     print("[CapacitorVideoPlayer] \(error)")
                     Self.logger.error("\(error, privacy: .public)")
                     call.resolve([
@@ -299,17 +331,18 @@ extension CapacitorVideoPlayerPlugin {
                     return
                 }
                 videoPlayer.delegate = self
+                videoPlayer.modalPresentationStyle = .fullScreen
+                videoPlayer.isModalInPresentation = false
                 videoPlayer.entersFullScreenWhenPlaybackBegins = false
-                let container = FullscreenPlayerContainerViewController(
-                    playerViewController: videoPlayer)
-                fullscreenView.fullscreenContainer = container
+                self.isPlayerDismissed = false
                 isOpeningNativeFullscreen = true
-                print("[CapacitorVideoPlayer] About to present fullscreen container playerId=\(playerId)")
+                let chain = Self.presentedChainDescription(from: bridgeRoot)
+                print("[CapacitorVideoPlayer] About to present AVPlayerViewController playerId=\(playerId) chain=\(chain)")
                 Self.logger.debug(
-                    "About to present fullscreen container for playerId=\(playerId, privacy: .public)")
-                viewController.present(container, animated: true, completion: {
-                    print("[CapacitorVideoPlayer] fullscreen container present completion fired")
-                    Self.logger.debug("fullscreen container present completion fired")
+                    "About to present AVPlayerViewController for playerId=\(playerId, privacy: .public) chain=\(chain, privacy: .public)")
+                self.presentFullscreenPlayer(videoPlayer) {
+                    print("[CapacitorVideoPlayer] AVPlayerViewController present completion fired")
+                    Self.logger.debug("AVPlayerViewController present completion fired")
                     DispatchQueue.main.asyncAfter(
                         deadline: .now() + Self.nativeFullscreenOpenHoldSeconds) {
                         isOpeningNativeFullscreen = false
@@ -331,7 +364,7 @@ extension CapacitorVideoPlayerPlugin {
                             "value": true
                         ])
                     }
-                })
+                }
             }
         }
     }

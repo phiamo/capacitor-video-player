@@ -72,6 +72,12 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var foregroundObserver: Any?
     var vpInternalObserver: Any?
     var isPlayerDismissed: Bool = false
+    /// True while a fullscreen dismiss transition is still running. Next `initPlayer` waits.
+    var isFullscreenDismissalInFlight: Bool = false
+    var fullscreenDismissalWaiters: [() -> Void] = []
+    /// Fresh window per session so every open is a first modal (Close/X, not nested Back).
+    var fullscreenPlayerWindow: UIWindow?
+    var fullscreenPlayerHost: UIViewController?
     let rateList: [Float] = [0.25, 0.5, 0.75, 1.0, 2.0, 4.0]
     /// One-shot start position (seconds) from `initPlayer` `seektime` — applied before first play.
     var initialSeekSeconds: Double = 0
@@ -174,8 +180,6 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
             self.drmOptions = nil
         }
 
-        // Reset dismissal state for new player
-        self.isPlayerDismissed = false
         isVideoEnded = false
         isOpeningNativeFullscreen = false
         isInPIPMode = false

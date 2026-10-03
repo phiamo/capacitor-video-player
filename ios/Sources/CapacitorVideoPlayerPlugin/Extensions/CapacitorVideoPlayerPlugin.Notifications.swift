@@ -205,48 +205,55 @@ extension CapacitorVideoPlayerPlugin {
     // MARK: - playerFullscreenExit
 
     func playerFullscreenExit() {
-        // Mark player as dismissed to prevent further calls
-        self.isPlayerDismissed = true
-        let container = self.videoPlayerFullScreenView?.fullscreenContainer
-        let presenter = container?.presentingViewController ?? self.bridge?.viewController
-
-        if let vPFSV = self.videoPlayerFullScreenView {
-            Self.logger.debug("Cleaning up video player on exit")
-            
-            // Comprehensive cleanup
-            vPFSV.cleanup()
-            self.terminateNowPlayingInfo()
-            
-            // Additional cleanup
-            vPFSV.videoPlayer.player = nil
-            vPFSV.player = nil
-            vPFSV.playerItem = nil
-            
-            // Clear the reference
-            self.videoPlayerFullScreenView = nil
-            
-            // Force memory cleanup
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                autoreleasepool {
-                    // This helps with memory cleanup
-                }
-            }
-            
-            Self.logger.debug("Video player cleanup completed")
+        if self.isFullscreenDismissalInFlight {
+            return
         }
-        presenter?.dismiss(animated: true, completion: {
-                if self.backModeEnabled {
-                    if let audioSession = self.audioSession {
-                        do {
-                            try audioSession.setActive(false)
-                            self.audioSession = nil
-                        } catch {
-                            let error: String = "playerFullscreenExit: Failed to deactivate audio session category"
-                            Self.logger.error("\(error, privacy: .public)")
-                        }
+        if self.videoPlayerFullScreenView == nil && self.isPlayerDismissed {
+            return
+        }
+        self.isPlayerDismissed = true
+        self.isFullscreenDismissalInFlight = true
+        let host = self.fullscreenPlayerHost
+        let root = host ?? self.bridge?.viewController
+
+        let finishCleanup: () -> Void = { [weak self] in
+            guard let self = self else { return }
+            let chain = Self.presentedChainDescription(from: self.fullscreenPlayerHost ?? self.bridge?.viewController)
+            NSLog("[CapacitorVideoPlayer] fullscreen dismiss complete chain=%@", chain)
+            Self.logger.debug("fullscreen dismiss complete chain=\(chain, privacy: .public)")
+
+            if let vPFSV = self.videoPlayerFullScreenView {
+                Self.logger.debug("Cleaning up video player on exit")
+                vPFSV.cleanup()
+                self.terminateNowPlayingInfo()
+                vPFSV.videoPlayer.player = nil
+                vPFSV.player = nil
+                vPFSV.playerItem = nil
+                self.videoPlayerFullScreenView = nil
+                Self.logger.debug("Video player cleanup completed")
+            }
+
+            if self.backModeEnabled {
+                if let audioSession = self.audioSession {
+                    do {
+                        try audioSession.setActive(false)
+                        self.audioSession = nil
+                    } catch {
+                        let error: String = "playerFullscreenExit: Failed to deactivate audio session category"
+                        Self.logger.error("\(error, privacy: .public)")
                     }
                 }
-            })
+            }
+
+            self.teardownFullscreenPlayerWindow()
+            self.finishFullscreenDismissalInFlight()
+        }
+
+        if root?.presentedViewController != nil {
+            root?.dismiss(animated: true, completion: finishCleanup)
+        } else {
+            finishCleanup()
+        }
     }
 
     private func terminateNowPlayingInfo() {

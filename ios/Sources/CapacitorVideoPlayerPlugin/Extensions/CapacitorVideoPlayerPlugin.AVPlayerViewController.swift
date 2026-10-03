@@ -49,9 +49,8 @@ extension CapacitorVideoPlayerPlugin: AVPlayerViewControllerDelegate {
                 isInPIPMode = true
                 self.notifyPictureInPictureStart()
             }
-            if let presenter = self.videoPlayerFullScreenView?.fullscreenContainer?
-                .presentingViewController {
-                presenter.dismiss(animated: true, completion: nil)
+            if let host = self.fullscreenPlayerHost {
+                host.dismiss(animated: true, completion: nil)
             } else {
                 self.bridge?.viewController?.dismiss(animated: true, completion: nil)
             }
@@ -77,11 +76,11 @@ extension CapacitorVideoPlayerPlugin: AVPlayerViewControllerDelegate {
         if isPIPModeAvailable {
             if isInPIPMode && !isVideoEnded {
                 isPlayerViewRestored = true
-                let toPresent: UIViewController =
-                    (playerViewController.parent as? FullscreenPlayerContainerViewController)
-                    ?? self.videoPlayerFullScreenView?.fullscreenContainer
-                    ?? playerViewController
-                self.bridge?.viewController?.present(toPresent, animated: true, completion: nil)
+                if let host = self.fullscreenPlayerHost {
+                    host.present(playerViewController, animated: true, completion: nil)
+                } else {
+                    self.bridge?.viewController?.present(playerViewController, animated: true, completion: nil)
+                }
             }
             isInPIPMode = false
             self.notifyPictureInPictureStop()
@@ -89,30 +88,37 @@ extension CapacitorVideoPlayerPlugin: AVPlayerViewControllerDelegate {
         completionHandler(true)
     }
 
-    /// User tapped Done/X on native fullscreen — KVO alone is unreliable on modern iOS.
+    /// System Close/X. Leave the modal; do not "restore inline" — that is what turns the next
+    /// open into a fullscreen-exit Back chevron instead of Close.
     public func playerViewController(
         _ playerViewController: AVPlayerViewController,
         willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
     ) {
+        if isInPIPMode {
+            return
+        }
+        NSLog("[CapacitorVideoPlayer] willEndFullScreenPresentation presented=%@",
+              playerViewController.presentingViewController != nil ? "true" : "false")
+        if playerViewController.presentingViewController != nil {
+            requestLeaveFullscreen(playerViewController: playerViewController)
+            return
+        }
+        coordinator.animate(alongsideTransition: nil) { [weak self] ctx in
+            guard let self = self, !ctx.isCancelled else { return }
+            self.requestLeaveFullscreen(playerViewController: playerViewController)
+        }
+    }
+
+    func requestLeaveFullscreen(playerViewController: AVPlayerViewController) {
         if self.isPlayerDismissed || isInPIPMode {
             return
         }
-        // AVKit often zeros rate before this callback; use sticky recent-play state.
         let wasPlaying = videoPlayerFullScreenView?.wasPlayingForDismiss()
             ?? ((playerViewController.player?.rate ?? 0) > 0)
-        NSLog("[CapacitorVideoPlayer] willEndFullScreenPresentation wasPlaying=%@", wasPlaying ? "true" : "false")
         NotificationCenter.default.post(
             name: .playerFullscreenDismiss,
             object: playerViewController,
             userInfo: ["wasPlaying": wasPlaying]
         )
-        // iOS 26 second session can show Back (exit-fullscreen) without dismissing the modal.
-        if !playerViewController.isBeingDismissed {
-            let host = playerViewController.parent as? FullscreenPlayerContainerViewController
-            let toDismiss = host ?? playerViewController
-            if !toDismiss.isBeingDismissed {
-                toDismiss.presentingViewController?.dismiss(animated: true)
-            }
-        }
     }
 }

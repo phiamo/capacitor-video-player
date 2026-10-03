@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Fixed
-- **iOS:** fullscreen dismiss is owned by a plugin container (one Close on that host for the whole session). `AVPlayerViewController` is only a child for playback chrome, so iOS 26 AVKit Back is not the dismiss control. Leftover player containers are dismissed before the next present.
+- **iOS:** each native fullscreen session presents `AVPlayerViewController` from a new window, so later opens get the same Close/X as the first. Presenting onto the Capacitor stack (or restoring “inline” after exit-fullscreen) made iOS 26 show a Back chevron instead.
 - **Android:** `initPlayer` while a player is still on screen (`stopAllPlayers` only pauses) now replaces that player in place. Before, it returned "FrameLayout for ExoPlayer already exists" and released the new DRM session, so an in-place re-init after `expired` could never work. Native events are also no longer registered once per `initPlayer`, so JS no longer gets each event twice.
 - **Android:** the player instance is now per fragment instead of static. When one fragment replaced another, the old one's teardown released the new player, and the rebuilt player crashed on its reused `DrmSessionManager`. The old fragment also releases its MediaSession before the new one is built (Media3 needs unique session ids).
 - **Android:** a decoder failure (`4003`) after an unrecovered DRM session error on protected content is reported as the typed `expired` error. Before, it was a generic decoder error. A license that ran out after a failed renewal showed up this way on some decoders.

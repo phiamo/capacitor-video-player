@@ -115,8 +115,6 @@ open class FullScreenVideoPlayerView: UIView {
 
     var player: AVPlayer?
     var videoPlayer: AVPlayerViewController
-    /// Presented host that owns dismiss; `videoPlayer` is only a child of this container.
-    var fullscreenContainer: FullscreenPlayerContainerViewController?
     var videoAsset: AVURLAsset
     var playerItem: AVPlayerItem?
     var isPlaying: Bool
@@ -2351,7 +2349,8 @@ open class FullScreenVideoPlayerView: UIView {
         }
         self.videoPlayer.player = self.player
         self.videoPlayer.updatesNowPlayingInfoCenter = false
-        // Presented as a child of FullscreenPlayerContainerViewController — not as the modal.
+        self.videoPlayer.modalPresentationStyle = .fullScreen
+        self.videoPlayer.isModalInPresentation = false
         self.videoPlayer.entersFullScreenWhenPlaybackBegins = false
         self.videoPlayer.allowsPictureInPicturePlayback = false
         if isPIPModeAvailable && self._pipEnabled {
@@ -2621,29 +2620,8 @@ open class FullScreenVideoPlayerView: UIView {
     // swiftlint:disable function_body_length
     // swiftlint:disable cyclomatic_complexity
     private func addObservers() {
-        self.videoPlayerFrameObserver = self.videoPlayer
-            .observe(\.view.frame, options: [.new, .old],
-                     changeHandler: {[weak self] (_, _) in
-                        guard let self = self else { return }
-                        if !isInPIPMode && !isOpeningNativeFullscreen && self._isReadyToPlay {
-                            if self.videoPlayer.isBeingDismissed && !isVideoEnded {
-                                NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
-                            }
-                        }
-
-                     })
-        self.videoPlayerMoveObserver = self.videoPlayer
-            .observe(\.view.center, options: [.new, .old],
-                     changeHandler: {[weak self] (_, _) in
-                        guard let self = self else { return }
-                        if !isInPIPMode && !isOpeningNativeFullscreen && self._isReadyToPlay {
-                            if self.videoPlayer.isBeingDismissed && !isVideoEnded {
-                                NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
-                            }
-
-                        }
-
-                     })
+        // Dismiss is owned by AVPlayerViewControllerDelegate.willEndFullScreenPresentation.
+        // Frame/center KVO used to post playerFullscreenDismiss and raced the delegate.
     }
 
     // swiftlint:enable function_body_length
@@ -2701,8 +2679,6 @@ open class FullScreenVideoPlayerView: UIView {
         self.cleanupAudioSession()
         
         // Clean up video player
-        self.fullscreenContainer?.detachPlayer()
-        self.fullscreenContainer = nil
         self.videoPlayer.player = nil
         
         // Clean up subtitle time observer (for custom UILabel rendering)
