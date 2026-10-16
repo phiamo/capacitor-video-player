@@ -49,6 +49,21 @@ extension CapacitorVideoPlayerPlugin {
         }
     }
 
+    // MARK: - playerItemFailed
+
+    @objc func playerItemFailed(notification: Notification) {
+        guard let info = notification.userInfo as? [String: Any] else { return }
+        let playerId = (info["fromPlayerId"] as? String) ?? self.fsPlayerId
+        let raw = (info["error"] as? String) ?? (info["code"] as? String)
+        let data = VideoPlaybackError.listenerData(fromPlayerId: playerId, error: raw ?? VideoPlaybackError.generic)
+        DispatchQueue.main.async {
+            self.notifyListeners("jeepCapVideoPlayerError", data: data, retainUntilConsumed: true)
+            if self.mode == "fullscreen" {
+                self.playerFullscreenExit()
+            }
+        }
+    }
+
     // MARK: - playerItemReady
 
     @objc func playerItemReady(notification: Notification) {

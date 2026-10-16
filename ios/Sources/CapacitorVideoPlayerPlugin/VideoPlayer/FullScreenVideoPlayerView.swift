@@ -2392,6 +2392,14 @@ open class FullScreenVideoPlayerView: UIView {
                         case .failed:
                             Self.logger.debug("failing to load")
                             self._isLoaded.updateValue(false, forKey: self._videoId)
+                            let code = VideoPlaybackError.from(playerItem.error)
+                            let vId: [String: Any] = [
+                                "fromPlayerId": self._videoId,
+                                "error": code,
+                                "code": code,
+                                "currentTime": self._currentTime
+                            ]
+                            NotificationCenter.default.post(name: .playerItemFailed, object: nil, userInfo: vId)
                         case .unknown:
                             Self.logger.debug("playerItem not yet ready")
                         @unknown default:

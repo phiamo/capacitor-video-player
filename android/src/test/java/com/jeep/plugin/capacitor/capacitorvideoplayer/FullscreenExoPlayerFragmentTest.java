@@ -137,6 +137,8 @@ public class FullscreenExoPlayerFragmentTest {
     assertTrue(source.contains("HTTP error after start"));
     assertTrue(source.contains("VideoDrm.fromPlaybackException"));
     assertTrue(source.contains("notifyTypedDrmPlayerError"));
+    assertTrue(source.contains("notifyLoadFailure"));
+    assertTrue(source.contains("VideoPlaybackError.listenerData"));
     assertTrue(source.contains("notifyJeepCapVideoPlayerError"));
     assertTrue(source.contains("duration != C.TIME_UNSET"));
     assertTrue(source.contains("dismissOnStopForHandoff"));

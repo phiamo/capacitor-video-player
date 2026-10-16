@@ -30,6 +30,9 @@ extension CapacitorVideoPlayerPlugin {
         readyObserver = NotificationCenter.default
             .addObserver(forName: .playerItemReady, object: nil,
                          queue: nil, using: playerItemReady)
+        failedObserver = NotificationCenter.default
+            .addObserver(forName: .playerItemFailed, object: nil,
+                         queue: nil, using: playerItemFailed)
         positionUpdateObserver = NotificationCenter.default
             .addObserver(forName: .playerItemPositionUpdate, object: nil,
                          queue: nil, using: playerItemPositionUpdate)

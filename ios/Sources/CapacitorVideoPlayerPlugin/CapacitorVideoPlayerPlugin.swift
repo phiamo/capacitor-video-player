@@ -64,6 +64,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var pauseObserver: Any?
     var endObserver: Any?
     var readyObserver: Any?
+    var failedObserver: Any?
     var positionUpdateObserver: Any?
     var seekCompletedObserver: Any?
     var subtitleChangeObserver: Any?
@@ -128,6 +129,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         NotificationCenter.default.removeObserver(pauseObserver as Any)
         NotificationCenter.default.removeObserver(endObserver as Any)
         NotificationCenter.default.removeObserver(readyObserver as Any)
+        NotificationCenter.default.removeObserver(failedObserver as Any)
         NotificationCenter.default.removeObserver(positionUpdateObserver as Any)
         NotificationCenter.default.removeObserver(seekCompletedObserver as Any)
         NotificationCenter.default.removeObserver(subtitleChangeObserver as Any)
@@ -141,6 +143,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         self.pauseObserver = nil
         self.endObserver = nil
         self.readyObserver = nil
+        self.failedObserver = nil
         self.positionUpdateObserver = nil
         self.seekCompletedObserver = nil
         self.subtitleChangeObserver = nil

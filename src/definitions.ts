@@ -216,12 +216,12 @@ export interface CapacitorVideoPlayerPlugin {
   ): Promise<PluginListenerHandle>;
 
   /**
-   * Typed DRM playback error from the host-registered provider (Android).
-   * Discriminator is exactly one of the five strings in `capVideoPlayerDrmError`.
+   * Typed playback error: DRM discriminators from the host-registered provider,
+   * or a load failure (`certificate` | `generic`) when the item never became ready.
    */
   addListener(
     eventName: 'jeepCapVideoPlayerError',
-    listenerFunc: (data: capVideoPlayerDrmErrorData) => void,
+    listenerFunc: (data: capVideoPlayerErrorData) => void,
   ): Promise<PluginListenerHandle>;
 }
 export interface capEchoOptions {
@@ -621,7 +621,17 @@ export type capVideoPlayerDrmError =
   | 'network'
   | 'unknown';
 
+export type capVideoPlayerLoadError = 'certificate' | 'generic';
+
 export interface capVideoPlayerDrmErrorData {
   fromPlayerId: string;
   error: capVideoPlayerDrmError;
 }
+
+export interface capVideoPlayerLoadErrorData {
+  fromPlayerId: string;
+  error: capVideoPlayerLoadError;
+  code: capVideoPlayerLoadError;
+}
+
+export type capVideoPlayerErrorData = capVideoPlayerDrmErrorData | capVideoPlayerLoadErrorData;

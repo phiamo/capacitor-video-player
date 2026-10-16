@@ -12,6 +12,7 @@ extension NSNotification.Name {
     static var playerItemPause: Notification.Name {return .init(rawValue: "playerItemPause")}
     static var playerItemEnd: Notification.Name {return .init(rawValue: "playerItemEnd")}
     static var playerItemReady: Notification.Name {return .init(rawValue: "playerItemReady")}
+    static var playerItemFailed: Notification.Name {return .init(rawValue: "playerItemFailed")}
     static var playerItemPositionUpdate: Notification.Name {return .init(rawValue: "playerItemPositionUpdate")}
     static var playerItemSeekCompleted: Notification.Name {return .init(rawValue: "playerItemSeekCompleted")}
     static var playerItemSubtitleChange: Notification.Name {return .init(rawValue: "playerItemSubtitleChange")}

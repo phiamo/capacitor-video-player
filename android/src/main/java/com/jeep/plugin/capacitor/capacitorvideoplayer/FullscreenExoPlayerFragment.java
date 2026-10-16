@@ -206,6 +206,21 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
   }
 
+  private void notifyLoadFailure(PlaybackException error) {
+    if (Pbar != null) {
+      Pbar.setVisibility(View.GONE);
+    }
+    CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+    if (plugin != null) {
+      plugin.notifyJeepCapVideoPlayerError(
+        VideoPlaybackError.listenerData(
+          playerId != null ? playerId : "fullscreen",
+          VideoPlaybackError.from(error)
+        )
+      );
+    }
+  }
+
   static boolean isSidecarSubtitleUri(Uri uri) {
     if (uri == null) {
       return false;
@@ -617,7 +632,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
             return;
           }
           if (exitsOnPlayerError(error.errorCode)) {
-            Toast.makeText(context, "Video could not be played", Toast.LENGTH_SHORT).show();
+            notifyLoadFailure(error);
             playerExit();
           }
         }
