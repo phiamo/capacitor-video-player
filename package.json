@@ -1,6 +1,6 @@
 {
   "name": "@dwbn/capacitor-video-player",
-  "version": "8.3.0",
+  "version": "8.4.0",
   "description": "custom Native Capacitor plugin to play a video",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",

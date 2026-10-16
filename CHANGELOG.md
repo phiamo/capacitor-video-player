@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [8.4.0] - 2026-10-16
+
 ### Fixed
 - **iOS/Android:** a failed native load (bad VOD TLS certificate, missing stream) emits `jeepCapVideoPlayerError` with `certificate` or `generic` and closes fullscreen. Typed DRM codes are unchanged.
 - **iOS:** each native fullscreen session presents `AVPlayerViewController` from a new window, so later opens get the same Close/X as the first. Presenting onto the Capacitor stack (or restoring “inline” after exit-fullscreen) made iOS 26 show a Back chevron instead.
