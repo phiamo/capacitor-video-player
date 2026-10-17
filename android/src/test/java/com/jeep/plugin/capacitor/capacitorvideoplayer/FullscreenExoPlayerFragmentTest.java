@@ -1,25 +1,83 @@
 package com.jeep.plugin.capacitor.capacitorvideoplayer;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import androidx.media3.cast.RemoteCastPlayer;
 import androidx.media3.common.DeviceInfo;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.util.UnstableApi;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 24)
 @UnstableApi
 public class FullscreenExoPlayerFragmentTest {
+
+  @Test
+  public void decodeFailureAfterFailedRenewalOnProtectedContentIsExpired() {
+    // Emulator 2026-09-27: renewal failed at 4m49s, keys ran out at 5m50s, Media3 reported 4003.
+    assertEquals(
+      VideoDrm.ERROR_EXPIRED,
+      FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_DECODING_FAILED, true, true)
+    );
+  }
+
+  @Test
+  public void decodeFailureWithoutDrmErrorOrOnClearContentStaysAPlainError() {
+    assertNull(FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_DECODING_FAILED, true, false));
+    assertNull(FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_DECODING_FAILED, false, true));
+    assertNull(FullscreenExoPlayerFragment.drmErrorForDecodeFailure(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS, true, true));
+  }
+
+  @Test
+  public void userAgentNeverMentionsExoPlayer() {
+    // Bunny storage 401s cache-slice pulls for "exoplayer" agents; seeks past the cached bytes stall.
+    String ua = FullscreenExoPlayerFragment.userAgent(RuntimeEnvironment.getApplication());
+    assertFalse(ua, ua.toLowerCase(Locale.ROOT).contains("exoplayer"));
+    assertTrue(ua, ua.startsWith("CapacitorVideoPlayer/"));
+  }
+
+  @Test
+  public void exitsOnFatalNonDrmErrors() {
+    assertTrue(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS));
+    assertTrue(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED));
+    assertTrue(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED));
+  }
+
+  @Test
+  public void leavesDrmErrorsToTheTypedJsError() {
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED));
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_UNSPECIFIED));
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR));
+    assertFalse(FullscreenExoPlayerFragment.exitsOnPlayerError(PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED));
+  }
+
+  @Test
+  public void sidecarSubtitleUri_matchesApiVtt() {
+    assertTrue(
+      FullscreenExoPlayerFragment.isSidecarSubtitleUri(
+        android.net.Uri.parse("https://awareness.ferrix.dwbn.org/api/v1/asset/test-1/subtitle/cs.vtt?bearer=tok")
+      )
+    );
+    assertFalse(
+      FullscreenExoPlayerFragment.isSidecarSubtitleUri(
+        android.net.Uri.parse("https://dwbn-awareness-drm-test.b-cdn.net/drm/pkg/video.m3u8")
+      )
+    );
+  }
 
   @Test
   public void isRemoteCastConnected_nullPlayer_isFalse() {
@@ -62,6 +120,49 @@ public class FullscreenExoPlayerFragmentTest {
     assertTrue(source.contains("new RemoteCastPlayer.Builder"));
     assertTrue(source.contains("DwbnVideoHandoffBridge.attach"));
     assertTrue(source.contains("DwbnVideoHandoffBridge.detach"));
+    int castBuilder = source.indexOf("new MediaItem.Builder()");
+    assertTrue(castBuilder >= 0);
+    String castItem = source.substring(castBuilder, source.indexOf(".build();", castBuilder));
+    assertFalse("Cast MediaItem must not attach DRM", castItem.contains("setDrmConfiguration"));
+    assertTrue(source.contains("player.prepare();\n      if (drmSession != null) {\n        drmSession.start();"));
+    assertTrue(source.contains("drmSession.release();"));
+    assertTrue(source.indexOf("drmSession.release();") < source.indexOf("player.release();"));
+    assertTrue(source.contains("void setInitialPlaybackPositionMs(long positionMs)"));
+    assertTrue(source.contains("player.setMediaSource(mediaSource, playbackPosition)"));
+    assertFalse(source.contains("Toast.makeText(context, \"Video Url not found\""));
+    assertTrue(source.contains("onPlayerError"));
+    assertTrue(source.contains("ERROR_CODE_IO_BAD_HTTP_STATUS"));
+    assertTrue(source.contains("isSidecarSubtitleHttpError"));
+    assertTrue(source.contains("keep playbackPosition"));
+    assertTrue(source.contains("HTTP error after start"));
+    assertTrue(source.contains("VideoDrm.fromPlaybackException"));
+    assertTrue(source.contains("notifyTypedDrmPlayerError"));
+    assertTrue(source.contains("notifyLoadFailure"));
+    assertTrue(source.contains("VideoPlaybackError.listenerData"));
+    assertTrue(source.contains("notifyJeepCapVideoPlayerError"));
+    assertTrue(source.contains("duration != C.TIME_UNSET"));
+    assertTrue(source.contains("dismissOnStopForHandoff"));
+    assertTrue(source.contains("player.getPlayWhenReady()"));
+  }
+
+  @Test
+  public void pluginSource_appliesInitPlayerSeektimeToFragment() throws IOException {
+    Path[] candidates = {
+      Paths.get("src/main/java/com/jeep/plugin/capacitor/capacitorvideoplayer/CapacitorVideoPlayerPlugin.java"),
+      Paths.get("../capacitor-video-player/android/src/main/java/com/jeep/plugin/capacitor/capacitorvideoplayer/CapacitorVideoPlayerPlugin.java"),
+      Paths.get("../../capacitor-video-player/android/src/main/java/com/jeep/plugin/capacitor/capacitorvideoplayer/CapacitorVideoPlayerPlugin.java"),
+    };
+    Path plugin = null;
+    for (Path path : candidates) {
+      if (Files.isRegularFile(path)) {
+        plugin = path;
+        break;
+      }
+    }
+    assertTrue(plugin != null);
+    String source = new String(Files.readAllBytes(plugin), StandardCharsets.UTF_8);
+    assertTrue(source.contains("call.getDouble(\"seektime\")"));
+    assertTrue(source.contains("setInitialPlaybackPositionMs(initialSeekMs)"));
   }
 
   private static Path fragmentSource() {

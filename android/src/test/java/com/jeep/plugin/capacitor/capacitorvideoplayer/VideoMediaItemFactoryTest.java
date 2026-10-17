@@ -2,6 +2,7 @@ package com.jeep.plugin.capacitor.capacitorvideoplayer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.net.Uri;
@@ -107,5 +108,81 @@ public class VideoMediaItemFactoryTest {
     assertEquals(MimeTypes.TEXT_VTT, cfg.mimeType);
     assertEquals(Uri.parse("https://example.com/de.vtt"), cfg.uri);
     assertEquals(C.SELECTION_FLAG_DEFAULT, cfg.selectionFlags);
+  }
+
+  @Test
+  public void fromUriAndType_withSession_attachesWidevineDrmConfiguration() {
+    FakeVideoDrmSession session = new FakeVideoDrmSession();
+    MediaItem item = VideoMediaItemFactory.fromUriAndType(
+      Uri.parse("https://example.com/lecture.m3u8"),
+      "m3u8",
+      null,
+      session
+    );
+
+    assertNotNull(item.localConfiguration);
+    assertNotNull(item.localConfiguration.drmConfiguration);
+    assertEquals(C.WIDEVINE_UUID, item.localConfiguration.drmConfiguration.scheme);
+    assertEquals(MimeTypes.APPLICATION_M3U8, item.localConfiguration.mimeType);
+  }
+
+  @Test
+  public void fromUriAndType_withoutSession_hasNoDrmConfiguration() {
+    MediaItem item = VideoMediaItemFactory.fromUriAndType(
+      Uri.parse("https://example.com/lecture.m3u8"),
+      "m3u8",
+      null
+    );
+
+    assertNotNull(item.localConfiguration);
+    assertNull(item.localConfiguration.drmConfiguration);
+  }
+
+  @Test
+  public void fromUriAndType_nullSession_doesNotAttachDrm() {
+    MediaItem item = VideoMediaItemFactory.fromUriAndType(
+      VIDEO_URI,
+      "mp4",
+      null,
+      null
+    );
+
+    assertNotNull(item.localConfiguration);
+    assertNull(item.localConfiguration.drmConfiguration);
+  }
+
+  @Test
+  public void fromUriAndType_withSession_keepsSubtitles() {
+    SubtitleTrack de = new SubtitleTrack("de", "https://example.com/de.vtt", "de");
+    FakeVideoDrmSession session = new FakeVideoDrmSession();
+    MediaItem item = VideoMediaItemFactory.fromUriAndType(
+      Uri.parse("https://example.com/lecture.m3u8"),
+      "m3u8",
+      Collections.singletonList(de),
+      session
+    );
+
+    assertNotNull(item.localConfiguration.drmConfiguration);
+    assertEquals(1, item.localConfiguration.subtitleConfigurations.size());
+    assertEquals("de", item.localConfiguration.subtitleConfigurations.get(0).id);
+  }
+
+  private static final class FakeVideoDrmSession implements VideoDrmSession {
+
+    @Override
+    public void applyDrm(MediaItem.Builder builder) {
+      builder.setDrmConfiguration(new MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID).build());
+    }
+
+    @Override
+    public androidx.media3.exoplayer.drm.DrmSessionManager getDrmSessionManager() {
+      return androidx.media3.exoplayer.drm.DrmSessionManager.DRM_UNSUPPORTED;
+    }
+
+    @Override
+    public void start() {}
+
+    @Override
+    public void release() {}
   }
 }

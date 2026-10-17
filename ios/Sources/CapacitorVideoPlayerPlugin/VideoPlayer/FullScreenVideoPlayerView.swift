@@ -135,6 +135,9 @@ open class FullScreenVideoPlayerView: UIView {
     var positionUpdateObserver: Any?
     var mediaSelectionObserver: NSKeyValueObservation?
     private var _positionUpdateInterval: Double = 5.0
+    /// Story 58.4: host-registered FairPlay session, opened by the plugin before this view is
+    /// built. `nil` for plain (non-DRM) playback.
+    private var drmSession: VideoDrmSession?
     /// Suppress subtitle bridge events during initial track selection / KVO noise (see analytics subtitle_change notes).
     private var suppressSubtitleBridgeEvents = true
     private var subtitleBridgeUnsuppressScheduled = false
@@ -145,7 +148,8 @@ open class FullScreenVideoPlayerView: UIView {
          stHeaders: [String: String]?, stOptions: [String: Any]?,
          title: String?, smallTitle: String?, artwork: String?,
          subtitleTracks: [[String: Any]]?,
-         selectedSubtitleId: String?, positionUpdateInterval: Double = 5.0) {
+         selectedSubtitleId: String?, positionUpdateInterval: Double = 5.0,
+         drmSession: VideoDrmSession? = nil) {
         //self._videoPath = videoPath
         self._url = url
         self._subtitleTracks = subtitleTracks
@@ -237,6 +241,15 @@ open class FullScreenVideoPlayerView: UIView {
 
         self.isPlaying = false
         super.init(frame: .zero)
+
+        // Story 58.4: attach the DRM session (if any) before any `AVPlayerItem` is built from
+        // `videoAsset` — `initializeAsync()` below is the first place one gets created.
+        self.drmSession = drmSession
+        if let drmSession = drmSession {
+            drmSession.attach(to: self.videoAsset)
+            drmSession.start()
+        }
+
         self.initialize()
         self.addObservers()
     }
@@ -624,6 +637,17 @@ open class FullScreenVideoPlayerView: UIView {
     private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) async {
         Self.logger.debug("Creating player with subtitles...")
 
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // composition built here could never receive FairPlay key requests. Skip composition and
+        // play `videoAsset` directly (already DRM-registered) while a session is attached.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition, playing videoAsset directly")
+            self.playerItem = AVPlayerItem(asset: self.videoAsset)
+            self.player = AVPlayer(playerItem: self.playerItem)
+            self.setupPlayer()
+            return
+        }
+
         var textStyle: [AVTextStyleRule] = []
         if let opt = self._stOptions {
             textStyle.append(contentsOf: self.setSubTitleStyle(options: opt))
@@ -850,6 +874,15 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // composition built here could never receive FairPlay key requests. Leave the current,
+        // already-DRM-registered player item in place rather than replacing it with one that
+        // silently loses key delivery.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
+            return
+        }
+
         let assetToUse: AVAsset
         if let urlAsset = asset as? AVURLAsset {
             assetToUse = urlAsset
@@ -973,6 +1006,13 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
+        // the current, already-DRM-registered player item in place.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
+            return
+        }
+
         if let composition = await self.createCompositionWithPlayerItemTracks(
             videoTracks: playerItemVideoTracks,
             audioTracks: playerItemAudioTracks,
@@ -1009,6 +1049,13 @@ open class FullScreenVideoPlayerView: UIView {
 
         guard !videoTracks.isEmpty else {
             Self.logger.error(" No video tracks available, cannot create composition")
+            return
+        }
+
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
+        // the current, already-DRM-registered player item in place.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
             return
         }
 
@@ -1097,6 +1144,17 @@ open class FullScreenVideoPlayerView: UIView {
         videoTracks: [AVAssetTrack],
         subtitleTracks: [[String: Any]]
     ) async {
+        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // composition built here could never receive FairPlay key requests. Skip composition and
+        // play `videoAsset` directly (already DRM-registered) while a session is attached.
+        guard self.drmSession == nil else {
+            Self.logger.notice(" Protected content: skipping subtitle composition, playing videoAsset directly")
+            self.playerItem = AVPlayerItem(asset: self.videoAsset)
+            self.player = AVPlayer(playerItem: self.playerItem)
+            self.setupPlayer()
+            return
+        }
+
         let audioTracks = (try? await self.videoAsset.loadAudioTracks()) ?? []
 
         if let composition = await self.createCompositionWithMultipleSubtitles(
@@ -2291,7 +2349,9 @@ open class FullScreenVideoPlayerView: UIView {
         }
         self.videoPlayer.player = self.player
         self.videoPlayer.updatesNowPlayingInfoCenter = false
-        self.videoPlayer.isModalInPresentation = true
+        self.videoPlayer.modalPresentationStyle = .fullScreen
+        self.videoPlayer.isModalInPresentation = false
+        self.videoPlayer.entersFullScreenWhenPlaybackBegins = false
         self.videoPlayer.allowsPictureInPicturePlayback = false
         if isPIPModeAvailable && self._pipEnabled {
             self.videoPlayer.allowsPictureInPicturePlayback = true
@@ -2332,6 +2392,14 @@ open class FullScreenVideoPlayerView: UIView {
                         case .failed:
                             Self.logger.debug("failing to load")
                             self._isLoaded.updateValue(false, forKey: self._videoId)
+                            let code = VideoPlaybackError.from(playerItem.error)
+                            let vId: [String: Any] = [
+                                "fromPlayerId": self._videoId,
+                                "error": code,
+                                "code": code,
+                                "currentTime": self._currentTime
+                            ]
+                            NotificationCenter.default.post(name: .playerItemFailed, object: nil, userInfo: vId)
                         case .unknown:
                             Self.logger.debug("playerItem not yet ready")
                         @unknown default:
@@ -2560,29 +2628,8 @@ open class FullScreenVideoPlayerView: UIView {
     // swiftlint:disable function_body_length
     // swiftlint:disable cyclomatic_complexity
     private func addObservers() {
-        self.videoPlayerFrameObserver = self.videoPlayer
-            .observe(\.view.frame, options: [.new, .old],
-                     changeHandler: {[weak self] (_, _) in
-                        guard let self = self else { return }
-                        if !isInPIPMode && !isOpeningNativeFullscreen && self._isReadyToPlay {
-                            if self.videoPlayer.isBeingDismissed && !isVideoEnded {
-                                NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
-                            }
-                        }
-
-                     })
-        self.videoPlayerMoveObserver = self.videoPlayer
-            .observe(\.view.center, options: [.new, .old],
-                     changeHandler: {[weak self] (_, _) in
-                        guard let self = self else { return }
-                        if !isInPIPMode && !isOpeningNativeFullscreen && self._isReadyToPlay {
-                            if self.videoPlayer.isBeingDismissed && !isVideoEnded {
-                                NotificationCenter.default.post(name: .playerFullscreenDismiss, object: nil)
-                            }
-
-                        }
-
-                     })
+        // Dismiss is owned by AVPlayerViewControllerDelegate.willEndFullScreenPresentation.
+        // Frame/center KVO used to post playerFullscreenDismiss and raced the delegate.
     }
 
     // swiftlint:enable function_body_length
@@ -2685,14 +2732,18 @@ open class FullScreenVideoPlayerView: UIView {
     deinit {
         Self.logger.debug("🗑️ FullScreenVideoPlayerView deinit called")
         self.removeObservers()
+        // Story 58.4: `release()` is idempotent (drm-kit `FairPlaySession` guarantees this), so a
+        // second call here after `cleanup()` already released it is safe.
+        self.drmSession?.release()
     }
-    
+
     // MARK: - Public cleanup method for manual disposal
-    
+
     @objc func cleanup() {
         Self.logger.debug("🧹 Manual cleanup called")
         self.removeObservers()
-        
+        self.drmSession?.release()
+
         // Force immediate memory cleanup
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             autoreleasepool {
@@ -2827,7 +2878,17 @@ open class FullScreenVideoPlayerView: UIView {
     @objc func setCurrentTimeThenPlay(time: Double) {
         self._initialPlaybackStarted = true
         self._skipAudioSessionReconfigurationForNextPlay = true
+        self.performInitialSeekThenPlay(time: time, retriesRemaining: 3)
+    }
 
+    /// `AVPlayer.seek(to:completionHandler:)` reports `finished == false` when the seek was
+    /// interrupted or superseded -- e.g. the player item's state churning while a FairPlay key
+    /// request is still in flight for a protected asset. Previously we called `play()`
+    /// unconditionally even on `finished == false`, silently starting from wherever the player
+    /// actually was (its default position, usually 0) instead of the requested one -- video
+    /// handoff would open at 0:00 instead of resuming where audio left off. Retry a few times
+    /// before giving up and playing from the current position.
+    private func performInitialSeekThenPlay(time: Double, retriesRemaining: Int) {
         let seekTime = CMTime(seconds: time, preferredTimescale: 600)
         self.player?.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             guard let self = self else { return }
@@ -2835,8 +2896,12 @@ open class FullScreenVideoPlayerView: UIView {
                 if finished {
                     self._currentTime = time
                     self.postSeekBridgeEvent(fromSeconds: 0, toSeconds: time)
+                    self.play()
+                } else if retriesRemaining > 0 {
+                    self.performInitialSeekThenPlay(time: time, retriesRemaining: retriesRemaining - 1)
+                } else {
+                    self.play()
                 }
-                self.play()
             }
         }
     }

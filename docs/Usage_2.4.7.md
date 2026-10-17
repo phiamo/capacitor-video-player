@@ -1,6 +1,6 @@
 # Usage Release 2.4.7 Documentation
 
-> **Archived — Capacitor 2 `Plugins` API.** Current install: **`@brylsherbert/capacitor-video-player@8.3.0`** with Capacitor 8. See [readme.md](../readme.md).
+> **Archived — Capacitor 2 `Plugins` API.** Current install: **`@dwbn/capacitor-video-player@8.3.0`** with Capacitor 8. See [readme.md](../readme.md).
 
 - In your code
 

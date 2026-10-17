@@ -136,9 +136,30 @@ export interface CapacitorVideoPlayerPlugin {
      *
      */
     getSelectedSubtitleTrack(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
+    /** Player is ready to play. */
+    addListener(eventName: 'jeepCapVideoPlayerReady', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Playback started or resumed. */
+    addListener(eventName: 'jeepCapVideoPlayerPlay', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Playback paused. */
+    addListener(eventName: 'jeepCapVideoPlayerPause', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Video reached its end. */
+    addListener(eventName: 'jeepCapVideoPlayerEnded', listenerFunc: (data: capVideoListener) => void): Promise<PluginListenerHandle>;
+    /** Fullscreen player closed; `currentTime` is the head at exit. */
+    addListener(eventName: 'jeepCapVideoPlayerExit', listenerFunc: (data: capExitListener) => void): Promise<PluginListenerHandle>;
+    /** Periodic playback head while playing. */
+    addListener(eventName: 'jeepCapVideoPlayerPositionUpdate', listenerFunc: (data: capPositionUpdateListener) => void): Promise<PluginListenerHandle>;
+    /** A seek completed. */
+    addListener(eventName: 'jeepCapVideoPlayerSeek', listenerFunc: (data: capSeekCompletedListener) => void): Promise<PluginListenerHandle>;
+    /** The user picked another subtitle track (or turned subtitles off). */
+    addListener(eventName: 'jeepCapVideoPlayerSubtitleChange', listenerFunc: (data: capSubtitleChangeListener) => void): Promise<PluginListenerHandle>;
     addListener(eventName: 'jeepCapVideoPlayerBackground', listenerFunc: (data: capVideoPlayerBackgroundData) => void): Promise<PluginListenerHandle>;
     addListener(eventName: 'jeepCapVideoPlayerPipStart', listenerFunc: (data: capVideoPlayerPipListener) => void): Promise<PluginListenerHandle>;
     addListener(eventName: 'jeepCapVideoPlayerPipStop', listenerFunc: (data: capVideoPlayerPipListener) => void): Promise<PluginListenerHandle>;
+    /**
+     * Typed DRM playback error from the host-registered provider (Android).
+     * Discriminator is exactly one of the five strings in `capVideoPlayerDrmError`.
+     */
+    addListener(eventName: 'jeepCapVideoPlayerError', listenerFunc: (data: capVideoPlayerDrmErrorData) => void): Promise<PluginListenerHandle>;
 }
 export interface capEchoOptions {
     /**
@@ -279,6 +300,13 @@ export interface capVideoPlayerOptions {
      * Prefer this over seeking after jeepCapVideoPlayerPlay to avoid races.
      */
     seektime?: number;
+    /**
+     * Optional DRM descriptor fields (API names). Android and iOS attach Widevine/FairPlay
+     * through a host-registered provider. Token URL, heartbeat URL, and Bearer live on that
+     * provider, not here. FairPlay fields are ignored on Android; `widevineLicenseUrl` is
+     * ignored on iOS. Web refuses this option.
+     */
+    drm?: capVideoDrmOptions;
 }
 export interface capVideoPlayerIdOptions {
     /**
@@ -405,6 +433,12 @@ export interface capVideoPlayerResult {
      * message string
      */
     message?: string;
+    /**
+     * Machine-readable failure: `noProvider` (Android or iOS, `drm` set but the host did not
+     * register a provider) or `notSupported` (web, when `drm` is set — iOS returns `noProvider`
+     * since Story 58.4).
+     */
+    code?: string;
 }
 export interface SubTitleOptions {
     /**
@@ -491,4 +525,30 @@ export interface capSubtitleTrackOptions {
      * ID of track to select, or null/empty string to disable subtitles
      */
     trackId: string | null;
+}
+/**
+ * Optional `initPlayer` DRM fields. Names match the playback API.
+ * Token / heartbeat URLs and Bearer are supplied by the host provider (57.6).
+ */
+export interface capVideoDrmStreamLimit {
+    mode?: string;
+    renewalIntervalSeconds?: number;
+    heartbeatIntervalSeconds?: number;
+}
+export interface capVideoDrmOptions {
+    widevineLicenseUrl?: string;
+    playbackSessionId?: string;
+    renewalCredential?: string;
+    streamLimit?: capVideoDrmStreamLimit;
+    /** Consumed by the iOS FairPlay provider (Story 58.4); ignored on Android. */
+    fairplayLicenseUrl?: string;
+    fairplayCertificateUrl?: string;
+}
+/**
+ * Exactly the five discriminators from app `drm-playback-messages.ts`.
+ */
+export type capVideoPlayerDrmError = 'blockedByStreamLimit' | 'notEntitled' | 'expired' | 'network' | 'unknown';
+export interface capVideoPlayerDrmErrorData {
+    fromPlayerId: string;
+    error: capVideoPlayerDrmError;
 }

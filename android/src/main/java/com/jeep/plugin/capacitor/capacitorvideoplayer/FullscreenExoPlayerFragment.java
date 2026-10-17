@@ -51,11 +51,13 @@ import androidx.mediarouter.media.MediaRouteSelector;
 import androidx.mediarouter.media.MediaRouter;
 import com.getcapacitor.JSObject;
 import androidx.media3.common.util.UnstableApi;
+import androidx.media3.common.util.Util;
 import androidx.media3.common.C;
 import androidx.media3.session.MediaSession;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.common.text.CueGroup;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.util.EventLogger;
 import androidx.media3.common.Format;
 import androidx.media3.exoplayer.LoadControl;
@@ -67,6 +69,7 @@ import androidx.media3.common.Tracks;
 import androidx.media3.common.AudioAttributes;
 import androidx.media3.cast.RemoteCastPlayer;
 import androidx.media3.common.DeviceInfo;
+import androidx.media3.exoplayer.drm.DrmSessionManager;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.ProgressiveMediaSource;
@@ -83,10 +86,11 @@ import androidx.media3.ui.CaptionStyleCompat;
 import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
 import androidx.media3.datasource.DataSource;
-import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
-
 import androidx.media3.datasource.DefaultHttpDataSource;
+import androidx.media3.datasource.HttpDataSource;
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.VideoSize;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
@@ -99,6 +103,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -133,6 +138,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
   public List<SubtitleTrack> subtitleTracks;
   public String selectedSubtitleId;
   public int positionUpdateInterval = 5; // Default 5 seconds
+  public VideoDrmSession drmSession;
 
   private static final String TAG = FullscreenExoPlayerFragment.class.getName();
   public static final long UNKNOWN_TIME = -1L;
@@ -142,14 +148,110 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private Player.Listener listener;
   private PlayerView styledPlayerView;
   private String vType = null;
-  private static ExoPlayer player;
+  // Per fragment, not static: when initPlayer replaces a fragment, the old one's teardown
+  // (onPause/onDestroy -> releasePlayer) must not pause or release the new fragment's player.
+  private ExoPlayer player;
   private boolean playWhenReady = true;
   private boolean firstReadyToPlay = true;
   private boolean isEnded = false;
   /** Mirrors ExoPlayer playback; used to avoid background events when paused. */
   private boolean isVideoPlaying = false;
+  /**
+   * Epic 45: {@code bkmodeEnabled=false} dismisses fullscreen on background only when playback
+   * was running. Screen-off / {@code onStop} while the user paused must keep the overlay.
+   */
+  private boolean dismissOnStopForHandoff = false;
   private int currentWindow = 0;
   private long playbackPosition = 0;
+
+  /**
+   * Applied on first STATE_READY {@code seekTo}. Must be set after construction;
+   * {@link #resetVariables()} zeros this on release.
+   */
+  /**
+   * Fatal non-DRM errors (404, network, bad manifest) close the player so JS gets
+   * {@code jeepCapVideoPlayerExit}. DRM errors stay open: JS gets a typed
+   * {@code jeepCapVideoPlayerError} (including CDM KEY_EXPIRED / 6006) and decides.
+   */
+  /**
+   * When a license renewal fails, playback continues on the old keys until they run out. On
+   * some decoders that ends as {@code ERROR_CODE_DECODING_FAILED} with no DRM marker in the cause
+   * (seen on Android 16 L3), so treat a decode failure after an unrecovered DRM session error on
+   * protected content as {@code expired}. Returns null when the error is not that case.
+   */
+  static String drmErrorForDecodeFailure(int errorCode, boolean protectedContent, boolean drmSessionErrorSinceKeysLoaded) {
+    if (protectedContent && drmSessionErrorSinceKeysLoaded && errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) {
+      return VideoDrm.ERROR_EXPIRED;
+    }
+    return null;
+  }
+
+  static boolean exitsOnPlayerError(int errorCode) {
+    return errorCode < PlaybackException.ERROR_CODE_DRM_UNSPECIFIED
+      || errorCode >= PlaybackException.ERROR_CODE_DRM_UNSPECIFIED + 1000;
+  }
+
+  private void notifyTypedDrmPlayerError(String drmError) {
+    if (Pbar != null) {
+      Pbar.setVisibility(View.GONE);
+    }
+    if (player != null) {
+      player.stop();
+    }
+    CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+    if (plugin != null) {
+      plugin.notifyJeepCapVideoPlayerError(
+        VideoDrm.errorListenerData(playerId != null ? playerId : "fullscreen", drmError)
+      );
+    }
+  }
+
+  private void notifyLoadFailure(PlaybackException error) {
+    if (Pbar != null) {
+      Pbar.setVisibility(View.GONE);
+    }
+    CapacitorVideoPlayerPlugin plugin = CapacitorVideoPlayerPlugin.getInstance();
+    if (plugin != null) {
+      plugin.notifyJeepCapVideoPlayerError(
+        VideoPlaybackError.listenerData(
+          playerId != null ? playerId : "fullscreen",
+          VideoPlaybackError.from(error)
+        )
+      );
+    }
+  }
+
+  static boolean isSidecarSubtitleUri(Uri uri) {
+    if (uri == null) {
+      return false;
+    }
+    String path = uri.getPath();
+    if (path != null && path.contains("/subtitle/")) {
+      return true;
+    }
+    String last = uri.getLastPathSegment();
+    return last != null && last.toLowerCase(Locale.US).endsWith(".vtt");
+  }
+
+  private static boolean isSidecarSubtitleHttpError(PlaybackException error) {
+    Throwable cause = error != null ? error.getCause() : null;
+    while (cause != null) {
+      if (cause instanceof HttpDataSource.InvalidResponseCodeException) {
+        HttpDataSource.InvalidResponseCodeException http = (HttpDataSource.InvalidResponseCodeException) cause;
+        if (http.dataSpec != null && isSidecarSubtitleUri(http.dataSpec.uri)) {
+          return true;
+        }
+      }
+      cause = cause.getCause();
+    }
+    return false;
+  }
+
+  void setInitialPlaybackPositionMs(long positionMs) {
+    if (positionMs > 0) {
+      playbackPosition = positionMs;
+    }
+  }
   private Uri uri = null;
   private Uri sturi = null;
   private ProgressBar Pbar;
@@ -212,6 +314,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
   private MediaRouteSelector mSelector;
   private CastStateListener castStateListener = null;
   private Boolean playerReady = false;
+  private boolean listenerAttached = false;
+  private boolean retriedStartFromZeroAfterHttpError = false;
+  /** Set when initPlayer replaces this fragment; teardown then stays silent (no exit event). */
+  private boolean replacedByNewPlayer = false;
+  /** A DRM session error (e.g. a failed license renewal) with no successful key load since. */
+  private boolean drmSessionErrorSinceKeysLoaded = false;
 
   /**
    * Create Fragment View
@@ -378,8 +486,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
           switch (state) {
             case Player.STATE_IDLE:
               stateString = "ExoPlayer.STATE_IDLE      -";
-              Toast.makeText(context, "Video Url not found", Toast.LENGTH_SHORT).show();
-              playerExit();
+              // IDLE is the default and the post-error state. Do not treat it as a missing URL.
+              Log.w(TAG, "ExoPlayer.STATE_IDLE playerReady=" + playerReady);
               break;
             case Player.STATE_BUFFERING:
               stateString = "ExoPlayer.STATE_BUFFERING -";
@@ -412,7 +520,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
                 
                 play();
                 Log.v(TAG, "**** in ExoPlayer.STATE_READY firstReadyToPlay player.isPlaying" + player.isPlaying());
-                player.seekTo(currentWindow, playbackPosition);
+                if (
+                  playbackPosition > 0 &&
+                  Math.abs(player.getCurrentPosition() - playbackPosition) > 1000
+                ) {
+                  player.seekTo(currentWindow, playbackPosition);
+                }
                 styledPlayerView.post(() -> adjustAspectRatio());
 
                 // We show progress bar, position and duration only when the video is not live
@@ -484,6 +597,44 @@ public class FullscreenExoPlayerFragment extends Fragment {
         @Override
         public void onTracksChanged(Tracks tracks) {
           maybeEmitSubtitleFromTracks();
+        }
+
+        @Override
+        public void onPlayerError(PlaybackException error) {
+          Log.e(TAG, "onPlayerError code=" + error.errorCode + " " + error.getErrorCodeName(), error);
+          if (isSidecarSubtitleHttpError(error)) {
+            Log.w(TAG, "sidecar subtitle HTTP error — keep playbackPosition");
+            return;
+          }
+          if (playerReady && error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+            Log.w(TAG, "HTTP error after start — keep playbackPosition");
+            return;
+          }
+          String drmError = VideoDrm.fromPlaybackException(error);
+          if (drmError == null) {
+            drmError = drmErrorForDecodeFailure(error.errorCode, drmSession != null, drmSessionErrorSinceKeysLoaded);
+          }
+          if (drmError != null) {
+            notifyTypedDrmPlayerError(drmError);
+            return;
+          }
+          if (
+            !retriedStartFromZeroAfterHttpError &&
+            playbackPosition > 0 &&
+            error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS &&
+            player != null
+          ) {
+            retriedStartFromZeroAfterHttpError = true;
+            playbackPosition = 0;
+            player.seekTo(0);
+            player.prepare();
+            play();
+            return;
+          }
+          if (exitsOnPlayerError(error.errorCode)) {
+            notifyLoadFailure(error);
+            playerExit();
+          }
         }
       };
 
@@ -700,6 +851,17 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
   }
 
+  /**
+   * initPlayer is replacing this player in place. Release now, before the new fragment builds its
+   * player: the new MediaSession reuses the id {@code org.dwbn.video} and Media3 requires ids to be
+   * unique. Later teardown stays silent (no exit event).
+   */
+  void releaseForReplacement() {
+    replacedByNewPlayer = true;
+    dismissOnStopForHandoff = false;
+    releasePlayer();
+  }
+
   public void playerExit() {
     // Capture head before teardown. Do not seekTo(0) — that races position ticks and can
     // poison Epic 45 video→audio handoff with position 0 / stale open position.
@@ -716,6 +878,9 @@ public class FullscreenExoPlayerFragment extends Fragment {
       player.setVolume(curVolume);
     }
     releasePlayer();
+    if (replacedByNewPlayer) {
+      return;
+    }
 /* 
     Activity mAct = getActivity();
     int mOrient = mAct.getRequestedOrientation();
@@ -777,7 +942,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Skips Picture-in-Picture where {@link Activity#isInPictureInPictureMode()} is true.
    */
   private void notifyAppBackgroundWhilePlayingIfNeeded() {
-    if (!isVideoPlaying || player == null) {
+    if (player == null) {
+      return;
+    }
+    if (!isVideoPlaying && !player.getPlayWhenReady()) {
       return;
     }
     Activity activity = getActivity();
@@ -818,10 +986,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
         // If cast is playing then it doesn't start the local player once get backs from background
         if (castContext != null && Boolean.TRUE.equals(chromecast) && isRemoteCastConnected(castPlayer)) return;
 
-        initializePlayer();
-        if (player != null && player.getCurrentPosition() != 0) {
-          firstReadyToPlay = false;
-          play();
+        // onCreateView already initializes. Re-running setMediaSource here double-loads HLS
+        // (401s on Bunny) and used to fire STATE_IDLE → fake "Video Url not found".
+        if (player == null) {
+          initializePlayer();
         }
       } else {
         // Story 45.x: avoid finishAndRemoveTask — same class of bug as PiP onStop (kills the whole Capacitor activity).
@@ -850,9 +1018,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
       isInPictureInPictureMode = false;
       return;
     }
-    // Epic 45 handoff (bkmodeEnabled=false): dismiss fullscreen when the app backgrounds so the
-    // native overlay cannot survive a foreground return if JS is throttled in the WebView.
-    if (!bkModeEnabled && isApplicationSentToBackground(context)) {
+    // Epic 45 handoff (bkmodeEnabled=false): dismiss only if playback was running when we
+    // paused for this lifecycle. isApplicationSentToBackground() is true for any live PID
+    // (not a real background check), so gating on it would also tear down a user pause +
+    // screen off and leave no video to resume.
+    if (dismissOnStopForHandoff) {
+      dismissOnStopForHandoff = false;
       playerExit();
     }
   }
@@ -891,6 +1062,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
             if (player.isPlaying()) play();
           }
         } else {
+          if (!bkModeEnabled && player != null && player.getPlayWhenReady()) {
+            dismissOnStopForHandoff = true;
+            notifyAppBackgroundWhilePlayingIfNeeded();
+          }
           pause();
         }
       }
@@ -908,6 +1083,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
   public void releasePlayer() {
     stopPositionUpdates();
     isVideoPlaying = false;
+    if (drmSession != null) {
+      drmSession.release();
+      drmSession = null;
+    }
     if (player != null) {
       playWhenReady = player.getPlayWhenReady();
       playbackPosition = player.getCurrentPosition();
@@ -1053,10 +1232,33 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
     if (mediaSource != null) {
       player.setAudioAttributes(AudioAttributes.DEFAULT, true);
-      player.addListener(listener);
-      attachDebugPlaybackLogging(player);
-      player.setMediaSource(mediaSource);
+      if (!listenerAttached) {
+        player.addListener(listener);
+        player.addAnalyticsListener(
+          new AnalyticsListener() {
+            @Override
+            public void onDrmSessionManagerError(EventTime eventTime, Exception error) {
+              drmSessionErrorSinceKeysLoaded = true;
+            }
+
+            @Override
+            public void onDrmKeysLoaded(EventTime eventTime) {
+              drmSessionErrorSinceKeysLoaded = false;
+            }
+          }
+        );
+        attachDebugPlaybackLogging(player);
+        listenerAttached = true;
+      }
+      if (playbackPosition > 0) {
+        player.setMediaSource(mediaSource, playbackPosition);
+      } else {
+        player.setMediaSource(mediaSource);
+      }
       player.prepare();
+      if (drmSession != null) {
+        drmSession.start();
+      }
       if (loopOnEnd) {
         player.setRepeatMode(player.REPEAT_MODE_ONE);
       } else {
@@ -1128,18 +1330,39 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   /**
+   * Media3's standard agent, e.g. {@code CapacitorVideoPlayer/1.0 (Linux;Android 17) AndroidXMedia3/1.11.1}.
+   * Never put "exoplayer" in it: the Bunny storage origin answers 401 to cache-slice pulls from
+   * such agents, so any seek into bytes not yet on the edge stalls.
+   */
+  static String userAgent(Context context) {
+    return Util.getUserAgent(context, "CapacitorVideoPlayer");
+  }
+
+  /**
    * Build the Asset MediaSource
    */
   private DataSource.Factory createDefaultDataSourceFactory() {
     DefaultHttpDataSource.Factory httpFactory = new DefaultHttpDataSource.Factory();
-    httpFactory.setUserAgent("jeep-exoplayer-plugin");
+    httpFactory.setUserAgent(userAgent(context));
     return new androidx.media3.datasource.DefaultDataSource.Factory(context, httpFactory);
+  }
+
+  private DefaultMediaSourceFactory drmAwareMediaSourceFactory(DataSource.Factory dataSourceFactory) {
+    DefaultMediaSourceFactory factory = new DefaultMediaSourceFactory(dataSourceFactory);
+    final VideoDrmSession session = drmSession;
+    if (session != null) {
+      factory.setDrmSessionManagerProvider(unused -> {
+        DrmSessionManager manager = session.getDrmSessionManager();
+        return manager != null ? manager : DrmSessionManager.DRM_UNSUPPORTED;
+      });
+    }
+    return factory;
   }
 
   private MediaSource buildAssetMediaSource(Uri uri) {
     DataSource.Factory dataSourceFactory = createDefaultDataSourceFactory();
-    return new DefaultMediaSourceFactory(dataSourceFactory)
-      .createMediaSource(VideoMediaItemFactory.fromUri(uri, sidecarSubtitleTracks()));
+    return drmAwareMediaSourceFactory(dataSourceFactory)
+      .createMediaSource(VideoMediaItemFactory.fromUriAndType(uri, null, sidecarSubtitleTracks(), drmSession));
   }
 
   /**
@@ -1156,7 +1379,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
    */
   private MediaSource buildHttpMediaSource() {
     DefaultHttpDataSource.Factory httpDataSourceFactory = new DefaultHttpDataSource.Factory();
-    httpDataSourceFactory.setUserAgent("jeep-exoplayer-plugin");
+    httpDataSourceFactory.setUserAgent(userAgent(context));
     httpDataSourceFactory.setConnectTimeoutMs(DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS);
     httpDataSourceFactory.setReadTimeoutMs(1800000);
     httpDataSourceFactory.setAllowCrossProtocolRedirects(true);
@@ -1176,8 +1399,8 @@ public class FullscreenExoPlayerFragment extends Fragment {
     }
 
     DataSource.Factory dataSourceFactory = new androidx.media3.datasource.DefaultDataSource.Factory(context, httpDataSourceFactory);
-    MediaItem mediaItem = VideoMediaItemFactory.fromUriAndType(uri, vType, sidecarSubtitleTracks());
-    return new DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem);
+    MediaItem mediaItem = VideoMediaItemFactory.fromUriAndType(uri, vType, sidecarSubtitleTracks(), drmSession);
+    return drmAwareMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem);
   }
 
   /**
@@ -1521,9 +1744,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
       styledPlayerView.setUseController(false);
       linearLayout.setVisibility(View.INVISIBLE);
     }
-    long seekPosition = player.getCurrentPosition() == UNKNOWN_TIME
-      ? 0
-      : Math.min(Math.max(0, timeSecond * 1000), player.getDuration());
+    long seekPosition = Math.max(0, timeSecond * 1000L);
+    long duration = player.getDuration();
+    if (duration > 0 && duration != C.TIME_UNSET && duration != UNKNOWN_TIME) {
+      seekPosition = Math.min(seekPosition, duration);
+    }
     player.seekTo(seekPosition);
   }
 
@@ -1646,6 +1871,11 @@ public class FullscreenExoPlayerFragment extends Fragment {
     styledPlayerView = null;
     playWhenReady = true;
     firstReadyToPlay = true;
+    playerReady = false;
+    listenerAttached = false;
+    retriedStartFromZeroAfterHttpError = false;
+    drmSessionErrorSinceKeysLoaded = false;
+    dismissOnStopForHandoff = false;
     isEnded = false;
     currentWindow = 0;
     playbackPosition = 0;

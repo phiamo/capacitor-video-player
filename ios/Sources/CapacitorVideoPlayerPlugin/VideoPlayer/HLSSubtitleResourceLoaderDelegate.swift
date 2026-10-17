@@ -47,31 +47,39 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
         
         let requestString = loadingRequest.request.url?.absoluteString ?? ""
         let dataRequest = loadingRequest.dataRequest
-        
+
+        // FairPlay key requests (`skd://<kid>:<iv>`) also reach this delegate once it's set as
+        // the asset's AVAssetResourceLoaderDelegate -- they are not ours: DRM key delivery is
+        // owned by the app's registered AVContentKeySession (drm-kit's FairPlaySession), routed
+        // via AVContentKeyRecipient, not AVAssetResourceLoader. Returning true/handled here (the
+        // old fallthrough to handleRedirectRequest wrapped the skd:// URL in a no-op 302 "redirect"
+        // and finished the load) silently steals every key request before AVContentKeySession ever
+        // sees it: the app's FairPlay session's error callback never fires, AVFoundation retries
+        // forever, and the video hangs on its loading spinner (CoreMediaErrorDomain -15622). Must
+        // return false to let AVFoundation route it to the correct delegate instead.
+        if requestString.hasPrefix("skd://") {
+            return false
+        }
+
         // Handle subtitle playlist requests
         if requestString.hasPrefix(subtitlePlaylistUrlPrefix) {
             return handleSubtitlePlaylistRequest(loadingRequest: loadingRequest)
         }
         
-        // Handle master playlist requests - inject subtitle tracks
-        // Master playlist requests typically:
-        // 1. Have requestedOffset == 0 (start of file)
-        // 2. Have requestedLength > 0 but relatively small (master playlists are text)
-        // 3. Contain .m3u8 in URL or are the initial request
-        if let dataRequest = dataRequest,
+        // Handle master/variant playlist requests - inject subtitle tracks.
+        // Identify playlists by URL (`.m3u8`/`manifest`) only. A requestedLength-based fallback
+        // was here before but also matched small BINARY requests (CMAF init segments, short
+        // media segments) on fMP4-packaged streams; decoding those as UTF-8 text failed, which
+        // AVFoundation's segment pump treated as a transient network error and retried forever —
+        // manifesting as an endless FairPlay key-request retry loop (CoreMediaErrorDomain -15622)
+        // and a stuck loading spinner (video only; audio never installs this delegate).
+        let isPlaylistRequest = requestString.contains(".m3u8") || requestString.contains("manifest")
+        if isPlaylistRequest, let dataRequest = dataRequest,
            dataRequest.requestedOffset == 0,
            dataRequest.requestedLength > 0 {
-            
-            // Check if this is a master playlist request
-            let isMasterPlaylist = requestString.contains(".m3u8") || 
-                                   requestString.contains("manifest") ||
-                                   (dataRequest.requestedLength < 50000) // Master playlists are typically small (< 50KB)
-            
-            if isMasterPlaylist {
-                return handleMasterPlaylistRequest(loadingRequest: loadingRequest)
-            }
+            return handleMasterPlaylistRequest(loadingRequest: loadingRequest)
         }
-        
+
         // For other requests (video/audio fragments), redirect to original URL
         return handleRedirectRequest(loadingRequest: loadingRequest, originalUrl: originalVideoUrl)
     }
@@ -135,7 +143,7 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
             
             // Inject subtitle tracks into the playlist
             let modifiedPlaylist = self.injectSubtitlesIntoPlaylist(playlistString: playlistString)
-            
+
             // Send modified playlist back
             if let modifiedData = modifiedPlaylist.data(using: .utf8) {
                 loadingRequest.dataRequest?.respond(with: modifiedData)
@@ -244,8 +252,12 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
     }
     
     // MARK: - Playlist Modification
-    
-    private func injectSubtitlesIntoPlaylist(playlistString: String) -> String {
+
+    // internal (not private): unit-tested directly via @testable import, see
+    // HLSSubtitleResourceLoaderDelegateTests -- exercising the real resourceLoader entry point
+    // would need mocking AVAssetResourceLoadingRequest/URLSession, which isn't worth it for a
+    // pure string-transform function.
+    func injectSubtitlesIntoPlaylist(playlistString: String) -> String {
         let lines = playlistString.components(separatedBy: .newlines)
         var modifiedLines: [String] = []
         
@@ -295,9 +307,18 @@ class HLSSubtitleResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate
                 let isDefault = (track["isDefault"] as? Bool) == true
                 let defaultAttr = isDefault ? ",DEFAULT=YES" : ",DEFAULT=NO"
                 
-                // FORCED=NO explicitly marks these as optional (non-forced) subtitles
-                // This prevents the warning about non-forced-only media selection
-                let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=YES\(defaultAttr),FORCED=NO,URI=\"\(subtitlePlaylistUrl)\""
+                // FORCED=NO marks these as optional (non-forced) subtitles -- correct, but on its
+                // own it does NOT stop AVFoundation from trying to auto-select one: AUTOSELECT=YES
+                // invites -[AVPlayerItem selectMediaOptionAutomaticallyInMediaSelectionGroup:] to
+                // pick a track based on system language/accessibility settings. When the device's
+                // caption display mode is the iOS default ("forced-only" -- Settings > Accessibility
+                // > Subtitles & Captioning off), that automatic pick of a non-forced track is
+                // rejected ("Received a non-forced-only media selection ... when display type was
+                // forced-only"), which leaves the track highlighted in the CC menu but not actually
+                // rendering cues, even after a manual re-select. AUTOSELECT=NO keeps this track out
+                // of that automatic path entirely; users can still pick it manually from the CC menu,
+                // which is a separate, unaffected selection path.
+                let mediaLine = "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",LANGUAGE=\"\(language)\",NAME=\"\(title)\",AUTOSELECT=NO\(defaultAttr),FORCED=NO,URI=\"\(subtitlePlaylistUrl)\""
                 subtitleMediaLines.append(mediaLine)
             }
             

@@ -52,6 +52,9 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var showControls: Bool = true
     var displayMode: String = "all"
     var headers: [String: String]?
+    /// Story 58.4: `initPlayer` `drm` option, held until the fullscreen view is created and a
+    /// `VideoDrmSession` is opened from the registered provider.
+    var drmOptions: JSObject?
     var title: String?
     var smallTitle: String?
     var artwork: String?
@@ -61,6 +64,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var pauseObserver: Any?
     var endObserver: Any?
     var readyObserver: Any?
+    var failedObserver: Any?
     var positionUpdateObserver: Any?
     var seekCompletedObserver: Any?
     var subtitleChangeObserver: Any?
@@ -69,6 +73,12 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var foregroundObserver: Any?
     var vpInternalObserver: Any?
     var isPlayerDismissed: Bool = false
+    /// True while a fullscreen dismiss transition is still running. Next `initPlayer` waits.
+    var isFullscreenDismissalInFlight: Bool = false
+    var fullscreenDismissalWaiters: [() -> Void] = []
+    /// Fresh window per session so every open is a first modal (Close/X, not nested Back).
+    var fullscreenPlayerWindow: UIWindow?
+    var fullscreenPlayerHost: UIViewController?
     let rateList: [Float] = [0.25, 0.5, 0.75, 1.0, 2.0, 4.0]
     /// One-shot start position (seconds) from `initPlayer` `seektime` — applied before first play.
     var initialSeekSeconds: Double = 0
@@ -119,6 +129,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         NotificationCenter.default.removeObserver(pauseObserver as Any)
         NotificationCenter.default.removeObserver(endObserver as Any)
         NotificationCenter.default.removeObserver(readyObserver as Any)
+        NotificationCenter.default.removeObserver(failedObserver as Any)
         NotificationCenter.default.removeObserver(positionUpdateObserver as Any)
         NotificationCenter.default.removeObserver(seekCompletedObserver as Any)
         NotificationCenter.default.removeObserver(subtitleChangeObserver as Any)
@@ -132,6 +143,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         self.pauseObserver = nil
         self.endObserver = nil
         self.readyObserver = nil
+        self.failedObserver = nil
         self.positionUpdateObserver = nil
         self.seekCompletedObserver = nil
         self.subtitleChangeObserver = nil
@@ -156,9 +168,24 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     // swiftlint:disable cyclomatic_complexity
     @objc func initPlayer(_ call: CAPPluginCall) {
         self.call = call
-        
-        // Reset dismissal state for new player
-        self.isPlayerDismissed = false
+
+        if let drm = call.getObject("drm") {
+            if VideoDrm.getProvider() == nil {
+                call.resolve([
+                    "result": false,
+                    "method": "initPlayer",
+                    "code": VideoDrm.codeNoProvider
+                ])
+                return
+            }
+            self.drmOptions = drm
+        } else {
+            self.drmOptions = nil
+        }
+
+        isVideoEnded = false
+        isOpeningNativeFullscreen = false
+        isInPIPMode = false
         
         guard let mode = call.options["mode"] as? String else {
             let error: String = "Must provide a Mode " +

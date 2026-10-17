@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+## [8.4.1] - 2026-10-17
+
+### Added
+- npm publish workflow with OIDC trusted publishing so `@dwbn/capacitor-video-player` can be released from a `v*` tag on `main`.
+
+## [8.4.0] - 2026-10-16
+
+### Fixed
+- **iOS/Android:** a failed native load (bad VOD TLS certificate, missing stream) emits `jeepCapVideoPlayerError` with `certificate` or `generic` and closes fullscreen. Typed DRM codes are unchanged.
+- **iOS:** each native fullscreen session presents `AVPlayerViewController` from a new window, so later opens get the same Close/X as the first. Presenting onto the Capacitor stack (or restoring “inline” after exit-fullscreen) made iOS 26 show a Back chevron instead.
+- **Android:** `initPlayer` while a player is still on screen (`stopAllPlayers` only pauses) now replaces that player in place. Before, it returned "FrameLayout for ExoPlayer already exists" and released the new DRM session, so an in-place re-init after `expired` could never work. Native events are also no longer registered once per `initPlayer`, so JS no longer gets each event twice.
+- **Android:** the player instance is now per fragment instead of static. When one fragment replaced another, the old one's teardown released the new player, and the rebuilt player crashed on its reused `DrmSessionManager`. The old fragment also releases its MediaSession before the new one is built (Media3 needs unique session ids).
+- **Android:** a decoder failure (`4003`) after an unrecovered DRM session error on protected content is reported as the typed `expired` error. Before, it was a generic decoder error. A license that ran out after a failed renewal showed up this way on some decoders.
+- **Android:** seeking far into a video served from a Bunny storage origin stalled with HTTP 401. The player's HTTP user agent was the hard-coded `jeep-exoplayer-plugin`, and Bunny's storage origin rejects cache-slice (Range) pulls from agents that contain "exoplayer". Bytes already on the edge still played, which is why playback from 0:00 worked. The player now sends Media3's standard agent, `CapacitorVideoPlayer/<app version> (Linux;Android <n>) AndroidXMedia3/<version>`. A unit test keeps "exoplayer" out of it.
+
+### Added
+- **iOS:** protected video playback via a host-registered `VideoDrmProvider`/`VideoDrmSession`, mirroring Android's contract exactly (Story 58.4). `initPlayer` with `drm` set and no provider registered now resolves `{result: false, code: "noProvider"}` instead of the old `notSupported` refusal; the plugin still never imports drm-kit — only the host app's adapter does. `AVMutableComposition` does not conform to `AVContentKeyRecipient` in this SDK, so `FullScreenVideoPlayerView`'s multi-subtitle-track composition rebuilds are skipped while a DRM session is attached — protected content plays `videoAsset` directly (already key-registered) instead of losing FairPlay key delivery silently; non-DRM playback is unaffected.
+
+### Changed
+- **iOS:** the minimum is iOS 15 (was iOS 18). The subtitle retry delays use `Task.sleep(nanoseconds:)` and subtitle language codes fall back to `Locale.languageCode` below iOS 16 (Story 58.2).
+- **Published as `@dwbn/capacitor-video-player`.** Before, this fork was used from git under the upstream name `@brylsherbert/capacitor-video-player`. To switch, replace the dependency, update imports, and run `npx cap sync`.
+- **iOS:** the CocoaPods pod and the Swift Package product are renamed `BrylsherbertCapacitorVideoPlayer` → `DwbnCapacitorVideoPlayer`. The Capacitor plugin name (`CapacitorVideoPlayer`), the JS API, the events and the Android namespace are unchanged.
+
+### Documentation
+- readme shortened to an overview. Guides moved to `docs/`: installation, usage, DRM, audio↔video handoff, upgrading, legacy versions, and history & credits (founder Jean Pierre Quéau → Harmon Wood → Bryl Sherbert → phiamo).
+- `docs/API.md` regenerated with docgen. It was missing `getLastKnownPosition`, the DRM options and the newer listeners.
+
 ## [8.3.1] - 2026-10-01
 
 ### Fixed

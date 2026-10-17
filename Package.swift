@@ -2,12 +2,15 @@
 import PackageDescription
 
 let package = Package(
-    name: "BrylsherbertCapacitorVideoPlayer",
+    name: "DwbnCapacitorVideoPlayer",
     platforms: [.iOS(.v15)],
     products: [
         .library(
+            name: "DwbnCapacitorVideoPlayer",
+            targets: ["CapacitorVideoPlayerPlugin"]),
+        .library(
             name: "BrylsherbertCapacitorVideoPlayer",
-            targets: ["CapacitorVideoPlayerPlugin"])
+            targets: ["CapacitorVideoPlayerPlugin"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0")
@@ -20,6 +23,13 @@ let package = Package(
                 .product(name: "Cordova", package: "capacitor-swift-pm")
             ],
             path: "ios/Sources/CapacitorVideoPlayerPlugin",
+            swiftSettings: [
+                .swiftLanguageMode(.v5),
+            ]),
+        .testTarget(
+            name: "CapacitorVideoPlayerPluginTests",
+            dependencies: ["CapacitorVideoPlayerPlugin"],
+            path: "ios/Tests/CapacitorVideoPlayerPluginTests",
             swiftSettings: [
                 .swiftLanguageMode(.v5),
             ])
