@@ -1,6 +1,6 @@
 {
   "name": "@dwbn/capacitor-video-player",
-  "version": "8.4.0",
+  "version": "8.4.1",
   "description": "custom Native Capacitor plugin to play a video",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -28,6 +28,11 @@
     "url": "https://github.com/phiamo/capacitor-video-player/issues"
   },
   "homepage": "https://www.capacitorvideoplayer.com",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "provenance": true
+  },
   "keywords": [
     "capacitor",
     "plugin",

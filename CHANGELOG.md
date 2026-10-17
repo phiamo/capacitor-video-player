@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## [8.4.1] - 2026-10-17
+
+### Added
+- npm publish workflow with OIDC trusted publishing so `@dwbn/capacitor-video-player` can be released from a `v*` tag on `main`.
+
 ## [8.4.0] - 2026-10-16
 
 ### Fixed
