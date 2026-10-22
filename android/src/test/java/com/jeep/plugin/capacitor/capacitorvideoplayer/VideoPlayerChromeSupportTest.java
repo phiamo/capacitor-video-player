@@ -5,10 +5,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.view.WindowManager;
 import android.widget.ImageView;
-import java.net.HttpURLConnection;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
@@ -16,7 +15,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk = 24)
+@Config(sdk = 28)
 public class VideoPlayerChromeSupportTest {
 
   @Test
@@ -28,33 +27,48 @@ public class VideoPlayerChromeSupportTest {
   }
 
   @Test
+  public void isRemoteHttpArtworkUrl_rejectsNullEmptyAndNonHttp() {
+    assertFalse(VideoPlayerChromeSupport.isRemoteHttpArtworkUrl(null));
+    assertFalse(VideoPlayerChromeSupport.isRemoteHttpArtworkUrl(""));
+    assertFalse(VideoPlayerChromeSupport.isRemoteHttpArtworkUrl("file:///tmp/art.png"));
+    assertFalse(VideoPlayerChromeSupport.isRemoteHttpArtworkUrl("not a url"));
+    assertTrue(VideoPlayerChromeSupport.isRemoteHttpArtworkUrl("https://example.com/art.jpg"));
+    assertTrue(VideoPlayerChromeSupport.isRemoteHttpArtworkUrl("http://example.com/art.jpg"));
+  }
+
+  @Test
   public void decodeCastArtworkBitmap_nullOrEmpty_returnsNull() {
-    assertNull(VideoPlayerChromeSupport.decodeCastArtworkBitmap(null));
-    assertNull(VideoPlayerChromeSupport.decodeCastArtworkBitmap(""));
+    assertNull(VideoPlayerChromeSupport.decodeCastArtworkBitmap(RuntimeEnvironment.getApplication(), null));
+    assertNull(VideoPlayerChromeSupport.decodeCastArtworkBitmap(RuntimeEnvironment.getApplication(), ""));
+    assertNull(VideoPlayerChromeSupport.decodeCastArtworkBitmap(null, "https://example.com/art.jpg"));
   }
 
   @Test
   public void decodeCastArtworkBitmap_nonHttp_returnsNullWithoutException() {
-    assertNull(VideoPlayerChromeSupport.decodeCastArtworkBitmap("file:///tmp/art.png"));
+    assertNull(VideoPlayerChromeSupport.decodeCastArtworkBitmap(RuntimeEnvironment.getApplication(), "file:///tmp/art.png"));
   }
 
   @Test
-  public void configureArtworkConnection_setsTenSecondTimeouts() {
-    HttpURLConnection connection = new HttpURLConnection(null) {
-      @Override
-      public void disconnect() {}
+  public void loadCastArtworkInto_nonHttp_doesNotThrow() {
+    ImageView view = new ImageView(RuntimeEnvironment.getApplication());
+    VideoPlayerChromeSupport.loadCastArtworkInto(null, "https://example.com/art.jpg");
+    VideoPlayerChromeSupport.loadCastArtworkInto(view, null);
+    VideoPlayerChromeSupport.loadCastArtworkInto(view, "");
+    VideoPlayerChromeSupport.loadCastArtworkInto(view, "file:///tmp/art.png");
+  }
 
-      @Override
-      public boolean usingProxy() {
-        return false;
-      }
-
-      @Override
-      public void connect() {}
-    };
-    VideoPlayerChromeSupport.configureArtworkConnection(connection);
-    assertEquals(VideoPlayerChromeSupport.ARTWORK_CONNECT_TIMEOUT_MS, connection.getConnectTimeout());
-    assertEquals(VideoPlayerChromeSupport.ARTWORK_READ_TIMEOUT_MS, connection.getReadTimeout());
+  @Test
+  public void playerCutoutMode_isAlwaysNotDeprecatedDefault() {
+    assertEquals(
+      WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS,
+      VideoPlayerChromeSupport.playerCutoutMode()
+    );
+    assertTrue(
+      VideoPlayerChromeSupport.playerCutoutMode() != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+    );
+    assertTrue(
+      VideoPlayerChromeSupport.playerCutoutMode() != WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+    );
   }
 
   @Test

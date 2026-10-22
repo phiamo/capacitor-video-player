@@ -3,25 +3,24 @@ package com.jeep.plugin.capacitor.capacitorvideoplayer;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
+import android.view.WindowManager;
 import android.widget.ImageView;
 import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.mediarouter.app.MediaRouteButton;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
+import com.bumptech.glide.Glide;
+import java.net.MalformedURLException;
 import java.net.URL;
-import java.net.URLConnection;
+import java.util.concurrent.TimeUnit;
 
 /** Package-visible helpers for Cast artwork and player chrome setup (testable without inflating the fragment). */
 final class VideoPlayerChromeSupport {
 
-  static final int ARTWORK_CONNECT_TIMEOUT_MS = 10_000;
   static final int ARTWORK_READ_TIMEOUT_MS = 10_000;
+  static final int ARTWORK_MAX_PX = 1280;
 
   private VideoPlayerChromeSupport() {}
 
@@ -33,39 +32,49 @@ final class VideoPlayerChromeSupport {
     return fragmentAdded && castImageView != null;
   }
 
-  static void configureArtworkConnection(HttpURLConnection connection) {
-    connection.setConnectTimeout(ARTWORK_CONNECT_TIMEOUT_MS);
-    connection.setReadTimeout(ARTWORK_READ_TIMEOUT_MS);
-  }
-
-  static Bitmap decodeCastArtworkBitmap(String image) {
+  static boolean isRemoteHttpArtworkUrl(String image) {
     if (image == null || image.isEmpty()) {
-      return null;
+      return false;
     }
-    HttpURLConnection connection = null;
     try {
       URL url = new URL(image);
       String protocol = url.getProtocol();
-      if (!"http".equalsIgnoreCase(protocol) && !"https".equalsIgnoreCase(protocol)) {
-        return null;
-      }
-      URLConnection opened = url.openConnection();
-      if (!(opened instanceof HttpURLConnection)) {
-        return null;
-      }
-      connection = (HttpURLConnection) opened;
-      connection.setDoInput(true);
-      configureArtworkConnection(connection);
-      connection.connect();
-      try (InputStream input = connection.getInputStream()) {
-        return BitmapFactory.decodeStream(input);
-      }
-    } catch (IOException ignored) {
+      return "http".equalsIgnoreCase(protocol) || "https".equalsIgnoreCase(protocol);
+    } catch (MalformedURLException ignored) {
+      return false;
+    }
+  }
+
+  static int playerCutoutMode() {
+    return WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+  }
+
+  static void loadCastArtworkInto(ImageView target, String image) {
+    if (target == null || !isRemoteHttpArtworkUrl(image)) {
+      return;
+    }
+    Glide.with(target)
+      .load(image)
+      .override(ARTWORK_MAX_PX, ARTWORK_MAX_PX)
+      .centerCrop()
+      .timeout(ARTWORK_READ_TIMEOUT_MS)
+      .into(target);
+  }
+
+  static Bitmap decodeCastArtworkBitmap(Context context, String image) {
+    if (context == null || !isRemoteHttpArtworkUrl(image)) {
       return null;
-    } finally {
-      if (connection != null) {
-        connection.disconnect();
-      }
+    }
+    try {
+      return Glide.with(context.getApplicationContext())
+        .asBitmap()
+        .load(image)
+        .override(ARTWORK_MAX_PX, ARTWORK_MAX_PX)
+        .timeout(ARTWORK_READ_TIMEOUT_MS)
+        .submit()
+        .get(ARTWORK_READ_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    } catch (Exception ignored) {
+      return null;
     }
   }
 

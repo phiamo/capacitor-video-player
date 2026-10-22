@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## [8.4.2] - 2026-10-23
+
+### Fixed
+- **Android:** Cast artwork is loaded with Glide (`override(1280)`) instead of a raw `HttpURLConnection` + `BitmapFactory.decodeStream` path. Play was flagging that decode for bitmap memory.
+- **Android:** fullscreen cutout mode stays `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` after exit (was deprecated `DEFAULT`). Matches `EdgeToEdge` / Android 15.
+
 ## [8.4.1] - 2026-10-17
 
 ### Added

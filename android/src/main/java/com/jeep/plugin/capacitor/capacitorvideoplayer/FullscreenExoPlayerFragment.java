@@ -10,7 +10,6 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -107,7 +106,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONException;
 
@@ -780,23 +778,10 @@ public class FullscreenExoPlayerFragment extends Fragment {
    * Sets the cast image in playerView when it is connected to a cast device
    */
   private void loadCastImage() {
-    final String image = artwork;
-    if (image == null || image.isEmpty()) {
+    if (!VideoPlayerChromeSupport.canApplyCastArtwork(isAdded(), cast_image)) {
       return;
     }
-    ExecutorService executor = Executors.newSingleThreadExecutor();
-    executor.execute(() -> {
-      try {
-        final Bitmap result = VideoPlayerChromeSupport.decodeCastArtworkBitmap(image);
-        new Handler(Looper.getMainLooper()).post(() -> {
-          if (VideoPlayerChromeSupport.canApplyCastArtwork(isAdded(), cast_image)) {
-            cast_image.setImageBitmap(result);
-          }
-        });
-      } finally {
-        executor.shutdown();
-      }
-    });
+    VideoPlayerChromeSupport.loadCastArtworkInto(cast_image, artwork);
   }
 
   /**
@@ -1157,7 +1142,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       WindowManager.LayoutParams attrs = window.getAttributes();
-      attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
+      attrs.layoutInDisplayCutoutMode = VideoPlayerChromeSupport.playerCutoutMode();
       window.setAttributes(attrs);
     }
 
@@ -1186,7 +1171,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       WindowManager.LayoutParams attrs = window.getAttributes();
-      attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+      attrs.layoutInDisplayCutoutMode = VideoPlayerChromeSupport.playerCutoutMode();
       window.setAttributes(attrs);
     }
 
