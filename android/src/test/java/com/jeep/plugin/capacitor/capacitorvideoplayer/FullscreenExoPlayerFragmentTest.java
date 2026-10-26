@@ -109,6 +109,17 @@ public class FullscreenExoPlayerFragmentTest {
   }
 
   @Test
+  public void hardwareBackExitsFullscreenInsteadOfEnteringPip() throws IOException {
+    String source = new String(Files.readAllBytes(fragmentSource()), StandardCharsets.UTF_8);
+    int start = source.indexOf("private void backPressed()");
+    int end = source.indexOf("private void resizePressed()");
+    assertTrue(start >= 0 && end > start);
+    String body = source.substring(start, end);
+    assertFalse(body.contains("pictureInPictureMode()"));
+    assertTrue(body.contains("playerExit()"));
+  }
+
+  @Test
   public void fragmentSource_doesNotUseDeprecatedPipFullscreenOrCastSessionApis() throws IOException {
     String source = new String(Files.readAllBytes(fragmentSource()), StandardCharsets.UTF_8);
     assertFalse("no-arg PiP", source.matches("(?s).*enterPictureInPictureMode\\(\\s*\\).*"));

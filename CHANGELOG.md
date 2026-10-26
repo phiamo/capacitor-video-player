@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- **Android:** hardware / gesture Back dismisses fullscreen (`playerExit`) instead of entering Picture-in-Picture. PiP remains available from the player control. Back-to-PiP left the Capacitor `/viewvideo` route on screen after the native surface shrank.
+
 ## [8.4.2] - 2026-10-23
 
 ### Fixed

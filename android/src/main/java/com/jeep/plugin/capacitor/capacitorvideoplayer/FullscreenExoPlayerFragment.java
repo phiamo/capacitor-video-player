@@ -799,25 +799,12 @@ public class FullscreenExoPlayerFragment extends Fragment {
   }
 
   /**
-   * Perform backPressed Action
+   * Perform backPressed Action.
+   * System / gesture back always dismisses fullscreen. PiP stays on the in-player button —
+   * mapping Back to PiP left the Ionic /viewvideo route (the "video sheet") open.
    */
   private void backPressed() {
-    if (isCastSession) {
-      playerExit();
-      return;
-    }
-    if (
-      !isInPictureInPictureMode &&
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
-        packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE) &&
-        isPIPModeeEnabled &&
-        pipEnabled &&
-        playerReady // <- playerReady: this prevents a crash if the user presses back before the player is ready (when enters in pip mode and tries to get the aspect ratio)
-    ) {
-      pictureInPictureMode();
-    } else {
-      playerExit();
-    }
+    playerExit();
   }
 
   private void resizePressed() {
