@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [8.4.3] - 2026-10-26
+
 ### Fixed
 - **Android:** hardware / gesture Back dismisses fullscreen (`playerExit`) instead of entering Picture-in-Picture. PiP remains available from the player control. Back-to-PiP left the Capacitor `/viewvideo` route on screen after the native surface shrank.
 - **iOS:** FairPlay HLS no longer rewrites the playlist to a `customscheme` URL for subtitle injection. That path hid `skd://` from `ContentKeySession` (CoreMediaErrorDomain -15622 / spinner). DRM stays on `https`; a dead kit session (`hasKitSession == false`) is treated as `noProvider` so clear HLS can still intercept.
