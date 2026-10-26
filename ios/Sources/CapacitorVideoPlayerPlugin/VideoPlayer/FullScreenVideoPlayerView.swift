@@ -192,10 +192,13 @@ open class FullScreenVideoPlayerView: UIView {
         self._artwork = artwork
         self._positionUpdateInterval = positionUpdateInterval
 
-        // For HLS streams, use custom URL scheme to enable resource loader
-        // This is needed both for subtitle injection AND for adding CLOSED-CAPTIONS=NONE when no subtitles
+        // HLS subtitle injection uses a custom URL scheme + AVAssetResourceLoaderDelegate.
+        // FairPlay ContentKeySession never sees `skd://` on that path — AVFoundation retries
+        // forever (CoreMediaErrorDomain -15622, spinner loop). DRM HLS stays on https.
+        let interceptHlsForSubtitles = FullScreenVideoPlayerView.isHLSStream(url: url)
+            && drmSession?.hasKitSession != true
         let finalUrl: URL
-        if FullScreenVideoPlayerView.isHLSStream(url: url) {
+        if interceptHlsForSubtitles {
             // Convert URL to custom scheme for resource loader interception
             // Replace http:// or https:// with customscheme://
             let urlString = url.absoluteString
@@ -227,7 +230,7 @@ open class FullScreenVideoPlayerView: UIView {
         
         // Set up resource loader delegate for HLS streams
         // Always create delegate for HLS streams, even without subtitles, to add CLOSED-CAPTIONS=NONE
-        if FullScreenVideoPlayerView.isHLSStream(url: url) {
+        if interceptHlsForSubtitles {
             let bearerToken = FullScreenVideoPlayerView.extractBearerToken(from: self._videoHeaders)
             // Use empty array if no subtitles, so delegate can add CLOSED-CAPTIONS=NONE
             let tracks = subtitleTracks ?? []
@@ -264,6 +267,12 @@ open class FullScreenVideoPlayerView: UIView {
 
   @MainActor
   private func initializeAsync() async {
+      if self.drmSession?.hasKitSession == true {
+          self.playerItem = AVPlayerItem(asset: self.videoAsset)
+          self.player = AVPlayer(playerItem: self.playerItem)
+          self.setupPlayer()
+          return
+      }
       if let tracks = self._subtitleTracks, !tracks.isEmpty {
           let isHLS = FullScreenVideoPlayerView.isHLSStream(url: self._url)
 
@@ -640,7 +649,7 @@ open class FullScreenVideoPlayerView: UIView {
         // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
         // composition built here could never receive FairPlay key requests. Skip composition and
         // play `videoAsset` directly (already DRM-registered) while a session is attached.
-        guard self.drmSession == nil else {
+        guard self.drmSession?.hasKitSession != true else {
             Self.logger.notice(" Protected content: skipping subtitle composition, playing videoAsset directly")
             self.playerItem = AVPlayerItem(asset: self.videoAsset)
             self.player = AVPlayer(playerItem: self.playerItem)
@@ -878,7 +887,7 @@ open class FullScreenVideoPlayerView: UIView {
         // composition built here could never receive FairPlay key requests. Leave the current,
         // already-DRM-registered player item in place rather than replacing it with one that
         // silently loses key delivery.
-        guard self.drmSession == nil else {
+        guard self.drmSession?.hasKitSession != true else {
             Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
             return
         }
@@ -1008,7 +1017,7 @@ open class FullScreenVideoPlayerView: UIView {
 
         // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
         // the current, already-DRM-registered player item in place.
-        guard self.drmSession == nil else {
+        guard self.drmSession?.hasKitSession != true else {
             Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
             return
         }
@@ -1054,7 +1063,7 @@ open class FullScreenVideoPlayerView: UIView {
 
         // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
         // the current, already-DRM-registered player item in place.
-        guard self.drmSession == nil else {
+        guard self.drmSession?.hasKitSession != true else {
             Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
             return
         }
@@ -1147,7 +1156,7 @@ open class FullScreenVideoPlayerView: UIView {
         // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
         // composition built here could never receive FairPlay key requests. Skip composition and
         // play `videoAsset` directly (already DRM-registered) while a session is attached.
-        guard self.drmSession == nil else {
+        guard self.drmSession?.hasKitSession != true else {
             Self.logger.notice(" Protected content: skipping subtitle composition, playing videoAsset directly")
             self.playerItem = AVPlayerItem(asset: self.videoAsset)
             self.player = AVPlayer(playerItem: self.playerItem)

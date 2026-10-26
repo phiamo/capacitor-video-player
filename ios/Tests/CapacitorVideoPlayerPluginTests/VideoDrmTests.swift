@@ -43,6 +43,15 @@ final class VideoDrmTests: XCTestCase {
         XCTAssertTrue((attempt.session as? FakeVideoDrmSession) === session)
     }
 
+    func test_open_deadKitSession_isNoProvider() {
+        let session = FakeVideoDrmSession()
+        session.hasKitSession = false
+        VideoDrm.setProvider(FakeVideoDrmProvider { _, _ in session })
+        let attempt = VideoDrm.open(["slug": "test-1"], onError: nil)
+        XCTAssertEqual(attempt.failureCode, VideoDrm.codeNoProvider)
+        XCTAssertNil(attempt.session)
+    }
+
     func test_errorListenerData_carriesDiscriminator() {
         let data = VideoDrm.errorListenerData(
             fromPlayerId: "fullscreen",
@@ -110,6 +119,7 @@ private final class FakeVideoDrmSession: VideoDrmSession {
     var attachedAsset: AVURLAsset?
     var startCalled = false
     var releaseCalled = false
+    var hasKitSession = true
 
     func attach(to asset: AVURLAsset) {
         attachedAsset = asset

@@ -609,6 +609,8 @@ export interface capVideoDrmOptions {
   /** Consumed by the iOS FairPlay provider (Story 58.4); ignored on Android. */
   fairplayLicenseUrl?: string;
   fairplayCertificateUrl?: string;
+  /** Catalog asset slug for `/drm-token`; must match this session, not DrmHost's last audio slug. */
+  slug?: string;
 }
 
 /**
