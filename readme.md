@@ -7,7 +7,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@dwbn/capacitor-video-player"><img src="https://img.shields.io/npm/v/@dwbn/capacitor-video-player?style=flat-square" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@dwbn/capacitor-video-player?style=flat-square" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/phiamo/capacitor-video-player?style=flat-square" /></a>
   <a href="https://capacitorjs.com"><img src="https://img.shields.io/badge/capacitor-8-119EFF?style=flat-square" /></a>
   <a href="#contributors-"><img src="https://img.shields.io/badge/all%20contributors-10-orange?style=flat-square" /></a>
 </p>
@@ -41,7 +41,9 @@ The plugins work on their own. drm-kit is optional and is added by the **app**, 
 | Chromecast | ✅ Media3 Cast | — | — |
 | Lock screen / MediaSession | ✅ | ✅ artwork, title | — |
 | DRM | ✅ Widevine via [drm-kit](./docs/drm.md) | planned (FairPlay) | — |
-| Minimum | SDK 24 | iOS 15 | modern browsers |
+| Minimum | Android 7 (API 24) and later | iOS 15 and later | modern browsers |
+
+Those are floors, not the only supported releases. Android API 24+ and iOS 15+ include current systems (iOS 18 through the current iOS). There is no upper cap.
 
 The full method and listener matrix is in [usage.md](./docs/usage.md). Requires **Capacitor 8** (`@capacitor/core >= 8.0.0`).
 
