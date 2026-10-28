@@ -155,7 +155,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
   /** Mirrors ExoPlayer playback; used to avoid background events when paused. */
   private boolean isVideoPlaying = false;
   /**
-   * Epic 45: {@code bkmodeEnabled=false} dismisses fullscreen on background only when playback
+   * {@code bkmodeEnabled=false} dismisses fullscreen on background only when playback
    * was running. Screen-off / {@code onStop} while the user paused must keep the overlay.
    */
   private boolean dismissOnStopForHandoff = false;
@@ -836,7 +836,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
 
   public void playerExit() {
     // Capture head before teardown. Do not seekTo(0) — that races position ticks and can
-    // poison Epic 45 video→audio handoff with position 0 / stale open position.
+    // poison video→audio handoff with position 0 / stale open position.
     final double exitTimeSec = player != null ? (player.getCurrentPosition() == UNKNOWN_TIME
       ? 0.0
       : player.getCurrentPosition() / 1000.0) : 0.0;
@@ -964,7 +964,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
           initializePlayer();
         }
       } else {
-        // Story 45.x: avoid finishAndRemoveTask — same class of bug as PiP onStop (kills the whole Capacitor activity).
+        // avoid finishAndRemoveTask — same class of bug as PiP onStop (kills the whole Capacitor activity).
         Log.w(TAG, "onStart: styledPlayerView is null — dismissing via playerExit() only");
         playerExit();
       }
@@ -982,7 +982,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
       notifyPictureInPictureStopIfNeeded();
       linearLayout.setVisibility(View.VISIBLE);
       playerExit();
-      // Story 45.x: do NOT call finishAndRemoveTask() here — it kills the entire Capacitor
+      // do NOT call finishAndRemoveTask() here — it kills the entire Capacitor
       // Activity before JS can run endVideoSession(). The playerFullscreenDismiss notification
       // (fired inside playerExit -> backPressed -> ... CapacitorVideoPlayerPlugin) already
       // emits jeepCapVideoPlayerExit which gives the WebView layer a chance to call
@@ -990,7 +990,7 @@ public class FullscreenExoPlayerFragment extends Fragment {
       isInPictureInPictureMode = false;
       return;
     }
-    // Epic 45 handoff (bkmodeEnabled=false): dismiss only if playback was running when we
+    // audio/video handoff (bkmodeEnabled=false): dismiss only if playback was running when we
     // paused for this lifecycle. isApplicationSentToBackground() is true for any live PID
     // (not a real background check), so gating on it would also tear down a user pause +
     // screen off and leave no video to resume.

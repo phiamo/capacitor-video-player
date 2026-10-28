@@ -2,7 +2,7 @@
 //  VideoDrmTests.swift
 //  CapacitorVideoPlayerPluginTests
 //
-//  Story 58.4: mirrors Android `VideoDrmTest` registry/typed-error coverage.
+// mirrors Android `VideoDrmTest` registry/typed-error coverage.
 //
 
 import AVFoundation

@@ -53,7 +53,7 @@ export interface CapacitorVideoPlayerPlugin {
     getCurrentTime(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
     /**
      * Last playback head (seconds) persisted on native when position ticks fire;
-     * survives WebView suspension (Epic 45 / PR-2).
+     * survives WebView suspension.
      */
     getLastKnownPosition(options: capVideoPlayerIdOptions): Promise<capVideoPlayerResult>;
     /**
@@ -374,7 +374,7 @@ export interface capExitListener {
      */
     currentTime?: number;
     /**
-     * Whether the native player was playing immediately before dismiss (Epic 45 handoff).
+     * Whether the native player was playing immediately before dismiss (audio/video handoff).
      * iOS often emits pause before exit when the user taps Done/X — JS should prefer this over a stale pause flag.
      */
     /** May arrive as boolean, 0/1, or 'true'/'false' depending on native bridge. */
@@ -435,8 +435,7 @@ export interface capVideoPlayerResult {
     message?: string;
     /**
      * Machine-readable failure: `noProvider` (Android or iOS, `drm` set but the host did not
-     * register a provider) or `notSupported` (web, when `drm` is set — iOS returns `noProvider`
-     * since Story 58.4).
+     * register a provider) or `notSupported` (web, when `drm` is set — iOS returns `noProvider`).
      */
     code?: string;
 }
@@ -540,7 +539,7 @@ export interface capVideoDrmOptions {
     playbackSessionId?: string;
     renewalCredential?: string;
     streamLimit?: capVideoDrmStreamLimit;
-    /** Consumed by the iOS FairPlay provider (Story 58.4); ignored on Android. */
+    /** Consumed by the iOS FairPlay provider; ignored on Android. */
     fairplayLicenseUrl?: string;
     fairplayCertificateUrl?: string;
     /** Catalog asset slug for `/drm-token`; must match this session, not DrmHost's last audio slug. */

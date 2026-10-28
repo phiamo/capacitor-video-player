@@ -21,7 +21,7 @@ extension CapacitorVideoPlayerPlugin: AVPlayerViewControllerDelegate {
 
     /// Fires as soon as the system begins the PiP transition — earlier and more reliable than
     /// `shouldAutomaticallyDismissAtPictureInPictureStart`, and races `UIApplication.didEnterBackgroundNotification`
-    /// favorably enough to gate the Epic 45 background handoff before it tears down the player.
+    /// favorably enough to gate the background handoff before it tears down the player.
     public func playerViewControllerWillStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
         guard isPIPModeAvailable else { return }
         isInPIPMode = true

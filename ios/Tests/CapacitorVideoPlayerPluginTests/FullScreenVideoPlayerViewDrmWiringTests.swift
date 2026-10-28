@@ -2,7 +2,7 @@
 //  FullScreenVideoPlayerViewDrmWiringTests.swift
 //  CapacitorVideoPlayerPluginTests
 //
-//  Story 58.4: exercises FullScreenVideoPlayerView's actual DRM wiring — attach(to:)/start() run
+//  Exercises FullScreenVideoPlayerView's actual DRM wiring — attach(to:)/start() run
 //  during init, release() runs from cleanup() — rather than pattern-matching the source text.
 //  `initialize()` only schedules a `Task { @MainActor in ... }` and returns immediately, so by the
 //  time `init(...)` returns, the synchronous attach/start calls that precede it have already run.

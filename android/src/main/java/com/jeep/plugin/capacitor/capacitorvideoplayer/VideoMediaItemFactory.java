@@ -11,9 +11,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Single factory for video {@link MediaItem} instances. Story 57.4 — optional {@link
+ * Single factory for video {@link MediaItem} instances. optional {@link
  * VideoDrmSession#applyDrm} is the only place Widevine {@link MediaItem.DrmConfiguration}
- * attaches. Story 55.2 — sidecar tracks are {@link MediaItem.SubtitleConfiguration} on this item.
+ * attaches. sidecar tracks are {@link MediaItem.SubtitleConfiguration} on this item.
  */
 @UnstableApi
 public final class VideoMediaItemFactory {

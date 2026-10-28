@@ -233,7 +233,7 @@ extension CapacitorVideoPlayerPlugin {
     // MARK: - createVideoPlayerFullScreenView
 
     /// Activates movie-playback audio session after AVPlayerViewController is presented.
-    /// Required for both legacy background mode and Epic 45 handoff (`backModeEnabled=false`).
+    /// Required for both legacy background mode and audio/video handoff (`backModeEnabled=false`).
     private func activateFullscreenAudioSessionAfterPresent() -> String? {
         self.audioSession = AVAudioSession.sharedInstance()
         do {

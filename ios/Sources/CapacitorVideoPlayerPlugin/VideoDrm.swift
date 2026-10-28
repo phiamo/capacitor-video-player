@@ -2,14 +2,14 @@
 //  VideoDrm.swift
 //  Plugin
 //
-//  Story 58.4: Swift port of the Android `VideoDrm`/`VideoDrmProvider`/`VideoDrmSession` trio.
+// Swift port of the Android `VideoDrm`/`VideoDrmProvider`/`VideoDrmSession` trio.
 //
 
 import AVFoundation
 import Capacitor
 import Foundation
 
-/// Plugin-owned DRM session. The host (Story 58.4) wraps drm-kit `FairPlaySession`; this plugin
+/// Plugin-owned DRM session. The host wraps drm-kit `FairPlaySession`; this plugin
 /// never imports drm-kit.
 public protocol VideoDrmSession: AnyObject {
     /// Routes the asset's FairPlay key requests through the session. Call before any
@@ -36,7 +36,7 @@ public protocol VideoDrmProvider {
     func open(_ drm: JSObject, onError: @escaping (String) -> Void) -> VideoDrmSession
 }
 
-/// Plugin-owned DRM provider registry. The host app registers drm-kit in Story 58.4; this module
+/// Plugin-owned DRM provider registry. The host app registers drm-kit; this module
 /// does not depend on drm-kit. Mirrors Android `VideoDrm`.
 public final class VideoDrm {
 

@@ -310,7 +310,7 @@ getLastKnownPosition(options: capVideoPlayerIdOptions) => Promise<capVideoPlayer
 ```
 
 Last playback head (seconds) persisted on native when position ticks fire;
-survives WebView suspension (Epic 45 / PR-2).
+survives WebView suspension.
 
 | Param         | Type                                                                        |
 | ------------- | --------------------------------------------------------------------------- |
@@ -799,7 +799,7 @@ Discriminator is exactly one of the five strings in <a href="#capvideoplayerdrme
 | **`method`**  | <code>string</code>  | method name                                                                                                                                                                                         |
 | **`value`**   | <code>any</code>     | value returned                                                                                                                                                                                      |
 | **`message`** | <code>string</code>  | message string                                                                                                                                                                                      |
-| **`code`**    | <code>string</code>  | Machine-readable failure: `noProvider` (Android or iOS, `drm` set but the host did not register a provider) or `notSupported` (web, when `drm` is set — iOS returns `noProvider` since Story 58.4). |
+| **`code`**    | <code>string</code>  | Machine-readable failure: `noProvider` (Android or iOS, `drm` set but the host did not register a provider) or `notSupported` (web, when `drm` is set — iOS returns `noProvider`). |
 
 
 #### capEchoOptions
@@ -874,7 +874,7 @@ Subtitle track definition
 | **`playbackSessionId`**      | <code>string</code>                                                       |                                                                         |
 | **`renewalCredential`**      | <code>string</code>                                                       |                                                                         |
 | **`streamLimit`**            | <code><a href="#capvideodrmstreamlimit">capVideoDrmStreamLimit</a></code> |                                                                         |
-| **`fairplayLicenseUrl`**     | <code>string</code>                                                       | Consumed by the iOS FairPlay provider (Story 58.4); ignored on Android. |
+| **`fairplayLicenseUrl`** | <code>string</code> | Consumed by the iOS FairPlay provider; ignored on Android. |
 | **`fairplayCertificateUrl`** | <code>string</code>                                                       |                                                                         |
 
 

@@ -11,7 +11,7 @@ enum CapacitorVideoPlayerError: Error {
         return value
     }
     // swiftlint:disable function_parameter_count
-    // Not @objc: `drmSession: VideoDrmSession?` (Story 58.4) is a pure-Swift protocol type and
+    // Not @objc: `drmSession: VideoDrmSession?` is a pure-Swift protocol type and
     // cannot be represented in Objective-C. Only called from Swift (CapacitorVideoPlayerPlugin.Fullscreen.swift).
     public func createFullscreenPlayer(playerId: String,
                                              videoUrl: URL,

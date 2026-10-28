@@ -52,7 +52,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
     var showControls: Bool = true
     var displayMode: String = "all"
     var headers: [String: String]?
-    /// Story 58.4: `initPlayer` `drm` option, held until the fullscreen view is created and a
+    /// `initPlayer` `drm` option, held until the fullscreen view is created and a
     /// `VideoDrmSession` is opened from the registered provider.
     var drmOptions: JSObject?
     var title: String?
@@ -108,7 +108,7 @@ public class CapacitorVideoPlayerPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         return nil
     }
-    /// Persisted per `playerId` when `jeepCapVideoPlayerPositionUpdate` fires (Epic 45 / PR-2 fallback).
+    /// Persisted per `playerId` when `jeepCapVideoPlayerPositionUpdate` fires.
     static let lastKnownPositionKeyPrefix = "CapacitorVideoPlayer.lastKnownPosition."
 
     override public func load() {

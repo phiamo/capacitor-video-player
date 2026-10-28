@@ -135,7 +135,7 @@ open class FullScreenVideoPlayerView: UIView {
     var positionUpdateObserver: Any?
     var mediaSelectionObserver: NSKeyValueObservation?
     private var _positionUpdateInterval: Double = 5.0
-    /// Story 58.4: host-registered FairPlay session, opened by the plugin before this view is
+    /// host-registered FairPlay session, opened by the plugin before this view is
     /// built. `nil` for plain (non-DRM) playback.
     private var drmSession: VideoDrmSession?
     /// Suppress subtitle bridge events during initial track selection / KVO noise (see analytics subtitle_change notes).
@@ -245,7 +245,7 @@ open class FullScreenVideoPlayerView: UIView {
         self.isPlaying = false
         super.init(frame: .zero)
 
-        // Story 58.4: attach the DRM session (if any) before any `AVPlayerItem` is built from
+        // attach the DRM session (if any) before any `AVPlayerItem` is built from
         // `videoAsset` — `initializeAsync()` below is the first place one gets created.
         self.drmSession = drmSession
         if let drmSession = drmSession {
@@ -646,7 +646,7 @@ open class FullScreenVideoPlayerView: UIView {
     private func createPlayerWithSubtitles(subTitleUrl: URL, videoTracks: [AVAssetTrack]) async {
         Self.logger.debug("Creating player with subtitles...")
 
-        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
         // composition built here could never receive FairPlay key requests. Skip composition and
         // play `videoAsset` directly (already DRM-registered) while a session is attached.
         guard self.drmSession?.hasKitSession != true else {
@@ -883,7 +883,7 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
-        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
         // composition built here could never receive FairPlay key requests. Leave the current,
         // already-DRM-registered player item in place rather than replacing it with one that
         // silently loses key delivery.
@@ -1015,7 +1015,7 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
-        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
+        // `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
         // the current, already-DRM-registered player item in place.
         guard self.drmSession?.hasKitSession != true else {
             Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
@@ -1061,7 +1061,7 @@ open class FullScreenVideoPlayerView: UIView {
             return
         }
 
-        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
+        // `AVMutableComposition` does not conform to `AVContentKeyRecipient`; leave
         // the current, already-DRM-registered player item in place.
         guard self.drmSession?.hasKitSession != true else {
             Self.logger.notice(" Protected content: skipping subtitle composition upgrade")
@@ -1153,7 +1153,7 @@ open class FullScreenVideoPlayerView: UIView {
         videoTracks: [AVAssetTrack],
         subtitleTracks: [[String: Any]]
     ) async {
-        // Story 58.4: `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
+        // `AVMutableComposition` does not conform to `AVContentKeyRecipient`, so a
         // composition built here could never receive FairPlay key requests. Skip composition and
         // play `videoAsset` directly (already DRM-registered) while a session is attached.
         guard self.drmSession?.hasKitSession != true else {
@@ -2741,7 +2741,7 @@ open class FullScreenVideoPlayerView: UIView {
     deinit {
         Self.logger.debug("🗑️ FullScreenVideoPlayerView deinit called")
         self.removeObservers()
-        // Story 58.4: `release()` is idempotent (drm-kit `FairPlaySession` guarantees this), so a
+        // `release()` is idempotent (drm-kit `FairPlaySession` guarantees this), so a
         // second call here after `cleanup()` already released it is safe.
         self.drmSession?.release()
     }
@@ -2769,7 +2769,7 @@ open class FullScreenVideoPlayerView: UIView {
     }
     // MARK: - Set-up Public functions
 
-    /// Present completion already configured movie-playback session (Epic 45 handoff).
+    /// Present completion already configured movie-playback session (audio/video handoff).
     func markPresentAudioSessionActive() {
         self._skipAudioSessionReconfigurationForNextPlay = true
     }

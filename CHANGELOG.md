@@ -33,10 +33,10 @@
 - **Android:** seeking far into a video served from a Bunny storage origin stalled with HTTP 401. The player's HTTP user agent was the hard-coded `jeep-exoplayer-plugin`, and Bunny's storage origin rejects cache-slice (Range) pulls from agents that contain "exoplayer". Bytes already on the edge still played, which is why playback from 0:00 worked. The player now sends Media3's standard agent, `CapacitorVideoPlayer/<app version> (Linux;Android <n>) AndroidXMedia3/<version>`. A unit test keeps "exoplayer" out of it.
 
 ### Added
-- **iOS:** protected video playback via a host-registered `VideoDrmProvider`/`VideoDrmSession`, mirroring Android's contract exactly (Story 58.4). `initPlayer` with `drm` set and no provider registered now resolves `{result: false, code: "noProvider"}` instead of the old `notSupported` refusal; the plugin still never imports drm-kit — only the host app's adapter does. `AVMutableComposition` does not conform to `AVContentKeyRecipient` in this SDK, so `FullScreenVideoPlayerView`'s multi-subtitle-track composition rebuilds are skipped while a DRM session is attached — protected content plays `videoAsset` directly (already key-registered) instead of losing FairPlay key delivery silently; non-DRM playback is unaffected.
+- **iOS:** protected video playback via a host-registered `VideoDrmProvider`/`VideoDrmSession`, mirroring Android's contract exactly. `initPlayer` with `drm` set and no provider registered now resolves `{result: false, code: "noProvider"}` instead of the old `notSupported` refusal; the plugin still never imports drm-kit — only the host app's adapter does. `AVMutableComposition` does not conform to `AVContentKeyRecipient` in this SDK, so `FullScreenVideoPlayerView`'s multi-subtitle-track composition rebuilds are skipped while a DRM session is attached — protected content plays `videoAsset` directly (already key-registered) instead of losing FairPlay key delivery silently; non-DRM playback is unaffected.
 
 ### Changed
-- **iOS:** the minimum is iOS 15 (was iOS 18). The subtitle retry delays use `Task.sleep(nanoseconds:)` and subtitle language codes fall back to `Locale.languageCode` below iOS 16 (Story 58.2).
+- **iOS:** the minimum is iOS 15 (was iOS 18). The subtitle retry delays use `Task.sleep(nanoseconds:)` and subtitle language codes fall back to `Locale.languageCode` below iOS 16.
 - **Published as `@dwbn/capacitor-video-player`.** Before, this fork was used from git under the upstream name `@brylsherbert/capacitor-video-player`. To switch, replace the dependency, update imports, and run `npx cap sync`.
 - **iOS:** the CocoaPods pod and the Swift Package product are renamed `BrylsherbertCapacitorVideoPlayer` → `DwbnCapacitorVideoPlayer`. The Capacitor plugin name (`CapacitorVideoPlayer`), the JS API, the events and the Android namespace are unchanged.
 
@@ -53,7 +53,7 @@
 
 ### Changed
 - **Android:** Migrate native video playback from ExoPlayer 2.19 to **androidx.media3** 1.11.1 (HLS, DASH, SmoothStreaming, progressive). Capacitor JS API and event payloads are unchanged.
-- **Android:** Sidecar subtitles attach as `MediaItem.SubtitleConfiguration` on the shared `VideoMediaItemFactory` item (Story 55.2).
+- **Android:** Sidecar subtitles attach as `MediaItem.SubtitleConfiguration` on the shared `VideoMediaItemFactory` item.
 - **Android:** Picture-in-picture, lock-screen `MediaSession`, and Chromecast run on Media3 (`MediaSession.Builder`, `RemoteCastPlayer`). PiP exit no longer calls `finishAndRemoveTask()` (preserves Capacitor activity for audio handoff).
 
 ### Notes for host apps
@@ -91,12 +91,12 @@
 ## [8.2.16] - 2026-07-18
 
 ### Fixed
-- **iOS:** `jeepCapVideoPlayerExit` includes `wasPlaying` captured before AVKit pauses on Done/X, so Epic 45 can resume audio even when a pause event clears JS play state first.
+- **iOS:** `jeepCapVideoPlayerExit` includes `wasPlaying` captured before AVKit pauses on Done/X, so the host can resume audio even when a pause event clears JS play state first.
 
 ## [8.2.15] - 2026-07-18
 
 ### Fixed
-- **Android:** On fullscreen exit, capture live ExoPlayer time and stop `seekTo(0)` before release so Epic 45 video→audio handoff is not poisoned by position 0 / a stale open position.
+- **Android:** On fullscreen exit, capture live ExoPlayer time and stop `seekTo(0)` before release so video→audio handoff is not poisoned by position 0 / a stale open position.
 - **Android/iOS:** Persist last-known position on seek-completed and on exit; exit `currentTime` is a double so JS handoff can prefer the true video head when WebView missed ticks.
 
 ## [8.2.14] - 2026-07-17
@@ -107,7 +107,7 @@
 ## [8.2.13] - 2026-07-17
 
 ### Fixed
-- **iOS:** Set `isInPIPMode` in `AVPictureInPictureControllerDelegate.pictureInPictureControllerWillStartPictureInPicture` before `didEnterBackground`, so Epic 45 handoff does not tear down the player during PiP transition (fixes crash and audio-only PiP).
+- **iOS:** Set `isInPIPMode` in `AVPictureInPictureControllerDelegate.pictureInPictureControllerWillStartPictureInPicture` before `didEnterBackground`, so audio/video handoff does not tear down the player during PiP transition (fixes crash and audio-only PiP).
 - **iOS/Android:** Emit `jeepCapVideoPlayerPipStart` / `jeepCapVideoPlayerPipStop` bridge events for JS PiP-aware background handling.
 
 ## [8.2.12] - 2026-07-15
@@ -121,7 +121,7 @@
 - **Android:** Replace deprecated `SYSTEM_UI_FLAG_*` fullscreen APIs with `WindowCompat` / `WindowInsetsControllerCompat` for true edge-to-edge fullscreen on targetSdk 36.
 - **Android:** Use `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` in fullscreen to eliminate white strip around camera cutout in landscape; reset to `DEFAULT` on exit.
 - **iOS:** Emit `jeepCapVideoPlayerExit` when user closes native fullscreen via Done/X.
-- **iOS:** Prevent Epic 45 handoff from dismissing video during open; improve fullscreen handling during app backgrounding.
+- **iOS:** Prevent audio/video handoff from dismissing video during open; improve fullscreen handling during app backgrounding.
 
 ## [8.2.10] - 2026-07-15
 
@@ -141,14 +141,14 @@
 ## [8.2.1] - 2026-04-19
 
 ### Fixed
-- **Android (Story 45.x):** `FullscreenExoPlayerFragment.onStop()` no longer calls `getActivity().finishAndRemoveTask()` when PiP mode is active. Previously this call killed the entire Capacitor Activity before the JS layer could run `endVideoSession()`, leaving the audio session unreleased and blocking resume-after-PiP. The fragment cleanup is now driven by the existing `playerFullscreenDismiss` notification path which emits `jeepCapVideoPlayerExit` to the WebView, allowing `endVideoSession` to restore the audio session and resume audio at the correct position.
-- **Android (Story 45.x):** `onStart()` when `styledPlayerView` is null no longer calls `finishAndRemoveTask()` (same full-app kill as the old PiP path). It now logs and calls `playerExit()` so JS can receive the normal dismiss notification.
+- **Android:** `FullscreenExoPlayerFragment.onStop()` no longer calls `getActivity().finishAndRemoveTask()` when PiP mode is active. Previously this call killed the entire Capacitor Activity before the JS layer could run `endVideoSession()`, leaving the audio session unreleased and blocking resume-after-PiP. The fragment cleanup is now driven by the existing `playerFullscreenDismiss` notification path which emits `jeepCapVideoPlayerExit` to the WebView, allowing `endVideoSession` to restore the audio session and resume audio at the correct position.
+- **Android:** `onStart()` when `styledPlayerView` is null no longer calls `finishAndRemoveTask()` (same full-app kill as the old PiP path). It now logs and calls `playerExit()` so JS can receive the normal dismiss notification.
 
 ## 8.2.0 (2026-04-14)
 
 ### Add Features
 
-- **`getLastKnownPosition`**: returns last playback head (seconds) persisted when `jeepCapVideoPlayerPositionUpdate` fires (iOS `UserDefaults`, Android `SharedPreferences`, Web in-memory). Used when the WebView is suspended or bridge events pause (Epic 45 / architecture PR-2).
+- **`getLastKnownPosition`**: returns last playback head (seconds) persisted when `jeepCapVideoPlayerPositionUpdate` fires (iOS `UserDefaults`, Android `SharedPreferences`, Web in-memory). Used when the WebView is suspended or bridge events pause (WebView suspension).
 
 ## 8.1.0 (2026-03-30)
 

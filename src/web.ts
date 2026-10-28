@@ -1056,7 +1056,7 @@ export class CapacitorVideoPlayerWeb
   }
 }
 
-/** iOS/web refuse `drm` before creating a player (Story 57.4). */
+/** iOS/web refuse `drm` before creating a player. */
 export function webDrmNotSupported(
   options: capVideoPlayerOptions,
 ): capVideoPlayerResult | null {
