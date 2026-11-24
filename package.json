@@ -1,7 +1,7 @@
 {
   "name": "@dwbn/capacitor-video-player",
-  "version": "8.4.3",
-  "description": "custom Native Capacitor plugin to play a video",
+  "version": "8.4.4",
+  "description": "Native fullscreen video player for Capacitor 8 (Android, iOS, Web): Media3 / AVPlayer, HLS and DASH, subtitles, picture-in-picture, Chromecast, Widevine DRM.",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
   "type": "module",
@@ -27,7 +27,7 @@
   "bugs": {
     "url": "https://github.com/phiamo/capacitor-video-player/issues"
   },
-  "homepage": "https://www.capacitorvideoplayer.com",
+  "homepage": "https://github.com/phiamo/capacitor-video-player#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
@@ -35,8 +35,22 @@
   },
   "keywords": [
     "capacitor",
+    "capacitor-plugin",
     "plugin",
-    "native"
+    "native",
+    "ionic",
+    "video",
+    "video-player",
+    "media3",
+    "exoplayer",
+    "avplayer",
+    "hls",
+    "dash",
+    "subtitles",
+    "picture-in-picture",
+    "chromecast",
+    "drm",
+    "widevine"
   ],
   "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
