@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## [8.4.4] - 2026-11-24
+
+### Changed
+- **npm metadata:** clearer package description, more search keywords (`capacitor-plugin`, DRM, media terms) and the homepage now points to this repository's README. No code changes.
+
 ## [8.4.3] - 2026-10-26
 
 ### Fixed
